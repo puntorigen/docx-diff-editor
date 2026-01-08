@@ -1101,6 +1101,20 @@ var DocxDiffEditor = forwardRef(
           }
         },
         /**
+         * Accept all track changes and return the clean document
+         */
+        async acceptAllChanges() {
+          const editor = superdocRef.current?.activeEditor;
+          if (!editor) {
+            throw new Error("Editor not ready");
+          }
+          editor.commands.acceptAllChanges();
+          const cleanJson = editor.getJSON();
+          setMergedJson(null);
+          setDiffResult(null);
+          return cleanJson;
+        },
+        /**
          * Check if editor is ready
          */
         isReady() {

@@ -618,6 +618,25 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         },
 
         /**
+         * Accept all track changes and return the clean document
+         */
+        async acceptAllChanges(): Promise<ProseMirrorJSON> {
+          const editor = superdocRef.current?.activeEditor;
+          if (!editor) {
+            throw new Error('Editor not ready');
+          }
+
+          editor.commands.acceptAllChanges();
+          const cleanJson = editor.getJSON();
+
+          // Clear comparison state since changes are now accepted
+          setMergedJson(null);
+          setDiffResult(null);
+
+          return cleanJson;
+        },
+
+        /**
          * Check if editor is ready
          */
         isReady(): boolean {

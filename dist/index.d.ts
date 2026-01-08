@@ -158,6 +158,8 @@ interface DocxDiffEditorRef {
     exportDocx(): Promise<Blob>;
     /** Reset to source state (clear comparison) */
     resetComparison(): void;
+    /** Accept all track changes and return the clean document */
+    acceptAllChanges(): Promise<ProseMirrorJSON>;
     /** Check if editor is ready */
     isReady(): boolean;
 }
