@@ -124,6 +124,28 @@ function getMarksAtPosition(spans: TextSpan[], pos: number): ProseMirrorMark[] {
 }
 
 /**
+ * Check if marks have any defined (non-undefined/null) attribute values.
+ * Returns false if marks array is empty or all marks have only undefined attrs.
+ */
+function hasDefinedAttributes(marks: ProseMirrorMark[]): boolean {
+  if (!marks || marks.length === 0) return false;
+
+  for (const mark of marks) {
+    // Marks without attrs (like simple bold/italic) are considered defined
+    if (!mark.attrs) continue;
+
+    for (const value of Object.values(mark.attrs)) {
+      if (value !== undefined && value !== null) {
+        return true;
+      }
+    }
+  }
+
+  // If we only have marks without attrs, they count as defined
+  return marks.some((m) => !m.attrs);
+}
+
+/**
  * Detect format changes on equal text segments.
  */
 function detectFormatChanges(
@@ -163,13 +185,21 @@ function detectFormatChanges(
             }
           }
 
-          formatChanges.push({
-            from: posA + startI,
-            to: posA + i,
-            text: segment.text.substring(startI, i),
-            before: startMarksA,
-            after: startMarksB,
-          });
+          // Skip format changes where "after" marks have no defined values
+          // This avoids showing "changed to undefined" for missing styles
+          if (hasDefinedAttributes(startMarksB) || hasDefinedAttributes(startMarksA)) {
+            // Only record if at least one side has meaningful values
+            // and the "after" side isn't just undefined values
+            if (hasDefinedAttributes(startMarksB)) {
+              formatChanges.push({
+                from: posA + startI,
+                to: posA + i,
+                text: segment.text.substring(startI, i),
+                before: startMarksA,
+                after: startMarksB,
+              });
+            }
+          }
         } else {
           i++;
         }

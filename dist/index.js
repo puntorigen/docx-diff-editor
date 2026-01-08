@@ -193,6 +193,18 @@ function getMarksAtPosition(spans, pos) {
   }
   return [];
 }
+function hasDefinedAttributes(marks) {
+  if (!marks || marks.length === 0) return false;
+  for (const mark of marks) {
+    if (!mark.attrs) continue;
+    for (const value of Object.values(mark.attrs)) {
+      if (value !== void 0 && value !== null) {
+        return true;
+      }
+    }
+  }
+  return marks.some((m) => !m.attrs);
+}
 function detectFormatChanges(spansA, spansB, segments) {
   const formatChanges = [];
   let posA = 0;
@@ -216,13 +228,17 @@ function detectFormatChanges(spansA, spansB, segments) {
               break;
             }
           }
-          formatChanges.push({
-            from: posA + startI,
-            to: posA + i,
-            text: segment.text.substring(startI, i),
-            before: startMarksA,
-            after: startMarksB
-          });
+          if (hasDefinedAttributes(startMarksB) || hasDefinedAttributes(startMarksA)) {
+            if (hasDefinedAttributes(startMarksB)) {
+              formatChanges.push({
+                from: posA + startI,
+                to: posA + i,
+                text: segment.text.substring(startI, i),
+                before: startMarksA,
+                after: startMarksB
+              });
+            }
+          }
         } else {
           i++;
         }
