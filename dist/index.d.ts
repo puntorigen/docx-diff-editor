@@ -228,12 +228,16 @@ declare function mergeDocuments(docA: ProseMirrorNode, docB: ProseMirrorNode, di
 
 /**
  * Create a trackInsert mark.
+ * @param author - The author of the change
+ * @param id - Optional ID to use (for linking with corresponding delete in replacements)
  */
-declare function createTrackInsertMark(author?: TrackChangeAuthor): ProseMirrorMark;
+declare function createTrackInsertMark(author?: TrackChangeAuthor, id?: string): ProseMirrorMark;
 /**
  * Create a trackDelete mark.
+ * @param author - The author of the change
+ * @param id - Optional ID to use (for linking with corresponding insert in replacements)
  */
-declare function createTrackDeleteMark(author?: TrackChangeAuthor): ProseMirrorMark;
+declare function createTrackDeleteMark(author?: TrackChangeAuthor, id?: string): ProseMirrorMark;
 /**
  * Create a trackFormat mark.
  */

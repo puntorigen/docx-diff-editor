@@ -4,6 +4,7 @@
  * based on character-level diff segments.
  */
 
+import { v4 as uuidv4 } from 'uuid';
 import type {
   ProseMirrorJSON,
   ProseMirrorNode,
@@ -31,6 +32,8 @@ function cloneNode(node: ProseMirrorNode): ProseMirrorNode {
 interface CharState {
   type: 'equal' | 'delete' | 'insert';
   insertText?: string;
+  /** Shared ID for replacement operations (delete + insert at same position) */
+  replacementId?: string;
 }
 
 /**
@@ -39,6 +42,8 @@ interface CharState {
 interface Insertion {
   afterOffset: number;
   text: string;
+  /** Shared ID for replacement operations (delete + insert at same position) */
+  replacementId?: string;
 }
 
 /**
@@ -79,7 +84,11 @@ export function mergeDocuments(
   }
 
   let docAOffset = 0;
-  for (const segment of diffResult.segments) {
+  const segments = diffResult.segments;
+  
+  for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+    const segment = segments[segIdx];
+    
     if (segment.type === 'equal') {
       // Mark these characters as equal
       for (let i = 0; i < segment.text.length; i++) {
@@ -87,14 +96,28 @@ export function mergeDocuments(
       }
       docAOffset += segment.text.length;
     } else if (segment.type === 'delete') {
+      // Check if next segment is an insert (replacement pattern)
+      const nextSegment = segments[segIdx + 1];
+      const isReplacement = nextSegment && nextSegment.type === 'insert';
+      const replacementId = isReplacement ? uuidv4() : undefined;
+      
       // Mark these characters as deleted
       for (let i = 0; i < segment.text.length; i++) {
-        charStates[docAOffset + i] = { type: 'delete' };
+        charStates[docAOffset + i] = { type: 'delete', replacementId };
       }
       docAOffset += segment.text.length;
+      
+      // If this is a replacement, process the insert segment now with the same ID
+      if (isReplacement && nextSegment) {
+        insertions.push({
+          afterOffset: docAOffset,
+          text: nextSegment.text,
+          replacementId,
+        });
+        segIdx++; // Skip the next segment since we processed it here
+      }
     } else if (segment.type === 'insert') {
-      // Insert doesn't consume docA characters, it adds new text
-      // We need to track where to insert
+      // Standalone insert (not part of a replacement)
       insertions.push({
         afterOffset: docAOffset,
         text: segment.text,
@@ -128,7 +151,7 @@ export function mergeDocuments(
           result.push({
             type: 'text',
             text: ins.text,
-            marks: [...(node.marks || []), createTrackInsertMark(author)],
+            marks: [...(node.marks || []), createTrackInsertMark(author, ins.replacementId)],
           });
         }
 
@@ -150,7 +173,7 @@ export function mergeDocuments(
         let marks = [...(node.marks || [])];
 
         if (charState.type === 'delete') {
-          marks.push(createTrackDeleteMark(author));
+          marks.push(createTrackDeleteMark(author, charState.replacementId));
         } else if (charState.type === 'equal') {
           // Check if there's a format change at this position
           if (currentFormatChange) {
@@ -173,16 +196,16 @@ export function mergeDocuments(
         i = j;
       }
 
-      // Check for insertions at the end of this text node
-      const endOffset = nodeOffset + text.length;
-      const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
-      for (const ins of endInsertions) {
-        result.push({
-          type: 'text',
-          text: ins.text,
-          marks: [...(node.marks || []), createTrackInsertMark(author)],
-        });
-      }
+        // Check for insertions at the end of this text node
+        const endOffset = nodeOffset + text.length;
+        const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
+        for (const ins of endInsertions) {
+          result.push({
+            type: 'text',
+            text: ins.text,
+            marks: [...(node.marks || []), createTrackInsertMark(author, ins.replacementId)],
+          });
+        }
 
       // Remove processed insertions
       insertions = insertions.filter(
@@ -240,7 +263,7 @@ export function mergeDocuments(
               {
                 type: 'text',
                 text: ins.text,
-                marks: [createTrackInsertMark(author)],
+                marks: [createTrackInsertMark(author, ins.replacementId)],
               },
             ],
           },

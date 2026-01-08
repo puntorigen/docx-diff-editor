@@ -9,12 +9,17 @@ import { DEFAULT_AUTHOR } from '../constants';
 
 /**
  * Create a trackInsert mark.
+ * @param author - The author of the change
+ * @param id - Optional ID to use (for linking with corresponding delete in replacements)
  */
-export function createTrackInsertMark(author: TrackChangeAuthor = DEFAULT_AUTHOR): ProseMirrorMark {
+export function createTrackInsertMark(
+  author: TrackChangeAuthor = DEFAULT_AUTHOR,
+  id?: string
+): ProseMirrorMark {
   return {
     type: 'trackInsert',
     attrs: {
-      id: uuidv4(),
+      id: id ?? uuidv4(),
       author: author.name,
       authorEmail: author.email,
       authorImage: '',
@@ -25,12 +30,17 @@ export function createTrackInsertMark(author: TrackChangeAuthor = DEFAULT_AUTHOR
 
 /**
  * Create a trackDelete mark.
+ * @param author - The author of the change
+ * @param id - Optional ID to use (for linking with corresponding insert in replacements)
  */
-export function createTrackDeleteMark(author: TrackChangeAuthor = DEFAULT_AUTHOR): ProseMirrorMark {
+export function createTrackDeleteMark(
+  author: TrackChangeAuthor = DEFAULT_AUTHOR,
+  id?: string
+): ProseMirrorMark {
   return {
     type: 'trackDelete',
     attrs: {
-      id: uuidv4(),
+      id: id ?? uuidv4(),
       author: author.name,
       authorEmail: author.email,
       authorImage: '',

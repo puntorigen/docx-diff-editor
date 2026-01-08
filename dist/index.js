@@ -280,11 +280,11 @@ function diffDocuments(docA, docB) {
     summary
   };
 }
-function createTrackInsertMark(author = DEFAULT_AUTHOR) {
+function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
   return {
     type: "trackInsert",
     attrs: {
-      id: uuid.v4(),
+      id: id ?? uuid.v4(),
       author: author.name,
       authorEmail: author.email,
       authorImage: "",
@@ -292,11 +292,11 @@ function createTrackInsertMark(author = DEFAULT_AUTHOR) {
     }
   };
 }
-function createTrackDeleteMark(author = DEFAULT_AUTHOR) {
+function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
   return {
     type: "trackDelete",
     attrs: {
-      id: uuid.v4(),
+      id: id ?? uuid.v4(),
       author: author.name,
       authorEmail: author.email,
       authorImage: "",
@@ -337,17 +337,30 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
     return null;
   }
   let docAOffset = 0;
-  for (const segment of diffResult.segments) {
+  const segments = diffResult.segments;
+  for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+    const segment = segments[segIdx];
     if (segment.type === "equal") {
       for (let i = 0; i < segment.text.length; i++) {
         charStates[docAOffset + i] = { type: "equal" };
       }
       docAOffset += segment.text.length;
     } else if (segment.type === "delete") {
+      const nextSegment = segments[segIdx + 1];
+      const isReplacement = nextSegment && nextSegment.type === "insert";
+      const replacementId = isReplacement ? uuid.v4() : void 0;
       for (let i = 0; i < segment.text.length; i++) {
-        charStates[docAOffset + i] = { type: "delete" };
+        charStates[docAOffset + i] = { type: "delete", replacementId };
       }
       docAOffset += segment.text.length;
+      if (isReplacement && nextSegment) {
+        insertions.push({
+          afterOffset: docAOffset,
+          text: nextSegment.text,
+          replacementId
+        });
+        segIdx++;
+      }
     } else if (segment.type === "insert") {
       insertions.push({
         afterOffset: docAOffset,
@@ -368,7 +381,7 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
           result.push({
             type: "text",
             text: ins.text,
-            marks: [...node.marks || [], createTrackInsertMark(author)]
+            marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
           });
         }
         const currentFormatChange = getFormatChangeAt(nodeOffset + i);
@@ -384,7 +397,7 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
         const chunk = text.substring(i, j);
         let marks = [...node.marks || []];
         if (charState.type === "delete") {
-          marks.push(createTrackDeleteMark(author));
+          marks.push(createTrackDeleteMark(author, charState.replacementId));
         } else if (charState.type === "equal") {
           if (currentFormatChange) {
             const trackFormatMark = createTrackFormatMark(
@@ -408,7 +421,7 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
         result.push({
           type: "text",
           text: ins.text,
-          marks: [...node.marks || [], createTrackInsertMark(author)]
+          marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
         });
       }
       insertions = insertions.filter(
@@ -453,7 +466,7 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
               {
                 type: "text",
                 text: ins.text,
-                marks: [createTrackInsertMark(author)]
+                marks: [createTrackInsertMark(author, ins.replacementId)]
               }
             ]
           }
