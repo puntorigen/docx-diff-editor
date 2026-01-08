@@ -1,0 +1,73 @@
+{
+  "name": "docx-diff-editor",
+  "version": "1.0.26",
+  "description": "React component for DOCX document comparison with track changes visualization",
+  "license": "Apache-2.0",
+  "author": "Pablo Schaffner",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/puntorigen/docx-diff-editor"
+  },
+  "keywords": [
+    "docx",
+    "diff",
+    "comparison",
+    "track-changes",
+    "document",
+    "editor",
+    "react",
+    "superdoc",
+    "prosemirror"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": [
+    "*.css"
+  ],
+  "scripts": {
+    "build": "tsup && npm run build:css",
+    "build:css": "node scripts/build-css.js",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "dependencies": {
+    "diff-match-patch": "^1.0.5",
+    "superdoc": "^1.2.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "@types/diff-match-patch": "^1.0.36",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/uuid": "^9.0.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  }
+}

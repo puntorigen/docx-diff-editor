@@ -1,0 +1,156 @@
+/**
+ * Track Changes styles for DocxDiffEditor
+ * Styles for SuperDoc track change marks (insert, delete, format).
+ */
+
+/* ==========================================================================
+   Insertion Styles (trackInsert)
+   ========================================================================== */
+
+/* Inserted text - green underline */
+.dde-container [data-track-insert],
+.dde-container .track-insert,
+.dde-container span[data-track-type="insert"] {
+  color: var(--dde-insert-color);
+  text-decoration: underline;
+  text-decoration-color: var(--dde-insert-color);
+  text-decoration-style: solid;
+  text-underline-offset: 2px;
+  background-color: var(--dde-insert-bg);
+}
+
+/* ==========================================================================
+   Deletion Styles (trackDelete)
+   ========================================================================== */
+
+/* Deleted text - red strikethrough */
+.dde-container [data-track-delete],
+.dde-container .track-delete,
+.dde-container span[data-track-type="delete"] {
+  color: var(--dde-delete-color);
+  text-decoration: line-through;
+  text-decoration-color: var(--dde-delete-color);
+  background-color: var(--dde-delete-bg);
+  opacity: 0.8;
+}
+
+/* ==========================================================================
+   Format Change Styles (trackFormat)
+   ========================================================================== */
+
+/* Format changes - gold/amber highlight */
+.dde-container [data-track-format],
+.dde-container .track-format,
+.dde-container span[data-track-type="format"] {
+  background-color: var(--dde-format-bg);
+  border-bottom: 2px solid var(--dde-format-color);
+}
+
+/* Format change with underline indicator */
+.dde-container [data-track-format]::after,
+.dde-container .track-format::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--dde-format-color);
+}
+
+/* ==========================================================================
+   Track Change Bubbles (SuperDoc's native styling support)
+   ========================================================================== */
+
+/* Track change bubble container */
+.dde-container .track-changes-bubble,
+.dde-container .tc-bubble {
+  background-color: var(--dde-bg-color);
+  border: 1px solid var(--dde-border-color);
+  border-radius: var(--dde-radius-md);
+  box-shadow: var(--dde-shadow-md);
+  padding: var(--dde-spacing-sm);
+  font-size: 0.875rem;
+}
+
+/* Bubble header with author info */
+.dde-container .track-changes-bubble__header,
+.dde-container .tc-bubble-header {
+  display: flex;
+  align-items: center;
+  gap: var(--dde-spacing-sm);
+  margin-bottom: var(--dde-spacing-xs);
+  color: var(--dde-text-muted);
+  font-size: 0.75rem;
+}
+
+/* Bubble content showing the change */
+.dde-container .track-changes-bubble__content,
+.dde-container .tc-bubble-content {
+  color: var(--dde-text-color);
+}
+
+/* Accept/Reject buttons in bubble */
+.dde-container .track-changes-bubble__actions,
+.dde-container .tc-bubble-actions {
+  display: flex;
+  gap: var(--dde-spacing-xs);
+  margin-top: var(--dde-spacing-sm);
+  padding-top: var(--dde-spacing-sm);
+  border-top: 1px solid var(--dde-border-light);
+}
+
+.dde-container .track-changes-bubble__btn,
+.dde-container .tc-bubble-btn {
+  padding: var(--dde-spacing-xs) var(--dde-spacing-sm);
+  border-radius: var(--dde-radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dde-transition-fast);
+  border: none;
+}
+
+/* Accept button */
+.dde-container .track-changes-bubble__btn--accept,
+.dde-container .tc-bubble-btn--accept {
+  background-color: var(--dde-insert-color);
+  color: white;
+}
+
+.dde-container .track-changes-bubble__btn--accept:hover,
+.dde-container .tc-bubble-btn--accept:hover {
+  background-color: #059669;
+}
+
+/* Reject button */
+.dde-container .track-changes-bubble__btn--reject,
+.dde-container .tc-bubble-btn--reject {
+  background-color: var(--dde-delete-color);
+  color: white;
+}
+
+.dde-container .track-changes-bubble__btn--reject:hover,
+.dde-container .tc-bubble-btn--reject:hover {
+  background-color: #DC2626;
+}
+
+/* ==========================================================================
+   Review Mode Indicator
+   ========================================================================== */
+
+.dde-container.dde-container--review-mode {
+  /* Optional: Add visual indicator that review mode is active */
+}
+
+/* ==========================================================================
+   Selection highlight for track changes
+   ========================================================================== */
+
+.dde-container .ProseMirror-selectednode [data-track-insert],
+.dde-container .ProseMirror-selectednode [data-track-delete],
+.dde-container .ProseMirror-selectednode [data-track-format] {
+  outline: 2px solid var(--dde-primary-color);
+  outline-offset: 1px;
+}
+

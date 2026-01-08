@@ -1,0 +1,46 @@
+/**
+ * Error state styles for DocxDiffEditor
+ */
+
+/* Error overlay */
+.dde-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--dde-bg-color);
+  z-index: var(--dde-z-error);
+  padding: var(--dde-spacing-lg);
+  text-align: center;
+}
+
+/* Error icon container */
+.dde-error__icon {
+  color: var(--dde-error-color);
+  margin-bottom: var(--dde-spacing-md);
+}
+
+/* Error SVG */
+.dde-error__svg {
+  width: 3rem;
+  height: 3rem;
+}
+
+/* Error title */
+.dde-error__title {
+  color: var(--dde-text-color);
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0 0 var(--dde-spacing-xs) 0;
+}
+
+/* Error message */
+.dde-error__message {
+  color: var(--dde-text-muted);
+  font-size: 0.875rem;
+  margin: 0;
+  max-width: 400px;
+}
+

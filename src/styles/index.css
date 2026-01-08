@@ -1,0 +1,36 @@
+/**
+ * DocxDiffEditor Styles
+ *
+ * Main entry point for all component styles.
+ * Import this file to get all necessary styles:
+ *
+ *   import '@yourorg/docx-diff-editor/styles.css';
+ *
+ * CSS Variables can be overridden to customize the component:
+ *
+ *   :root {
+ *     --dde-primary-color: #6366F1;
+ *     --dde-insert-color: #22C55E;
+ *   }
+ */
+
+/* Note: In the build process, these files are concatenated.
+   The @import statements below are for documentation purposes
+   and to show the intended load order. The actual dist/styles.css
+   will be a concatenation of all these files. */
+
+/* Variables - CSS custom properties */
+/* @import './variables.css'; */
+
+/* Base - Container and layout */
+/* @import './base.css'; */
+
+/* Loading - Loading state styles */
+/* @import './loading.css'; */
+
+/* Error - Error state styles */
+/* @import './error.css'; */
+
+/* Track Changes - SuperDoc track change styling */
+/* @import './track-changes.css'; */
+

@@ -1,0 +1,80 @@
+---
+description: How to make SuperDoc track bubbles appear when injecting ProseMirror JSON with track change marks
+globs: ["**/*.tsx", "**/*.ts"]
+alwaysApply: false
+---
+
+# SuperDoc Track Bubbles Fix
+
+## Problem
+
+When injecting ProseMirror JSON with track change marks (trackInsert, trackDelete, trackFormat) via `setEditorContent()` or `setContent()`, the track marks are visible inline (strikethrough, colored text) but the **track bubbles sidebar does not appear**.
+
+## Root Cause
+
+SuperDoc's track bubble UI reads from `getFloatingComments`, which depends on entries in `commentsList`. When you inject JSON with track marks:
+
+1. Track marks ARE in the document (visible inline)
+2. But NO comment entries are created in `commentsList`
+3. So `getFloatingComments` returns empty
+4. So no track bubbles render
+
+Comment entries are only created automatically when:
+- Loading a DOCX file with embedded track changes (via the converter)
+- Making changes in "suggesting" mode (via `handleTrackedChangeTransaction`)
+
+## Solution
+
+After injecting merged JSON with track marks, call `processLoadedDocxComments` with an empty comments array. This triggers `createCommentForTrackChanges` internally, which:
+
+1. Scans the document for track marks using `getTrackChanges(editor.state)`
+2. Creates comment entries for each track mark
+3. Populates `commentsList`
+4. Track bubbles appear
+
+```typescript
+// After setEditorContent with merged JSON containing track marks:
+if (superdoc.commentsStore?.processLoadedDocxComments) {
+  setTimeout(() => {
+    superdoc.commentsStore.processLoadedDocxComments({
+      superdoc: superdoc,
+      editor: superdoc.activeEditor,
+      comments: [], // Empty - just triggers createCommentForTrackChanges
+      documentId: superdoc.activeEditor?.options?.documentId || 'primary',
+    });
+  }, 50);
+}
+```
+
+## Source Code References
+
+From `superdoc/dist/chunks/index-1n6qegaQ.es.js`:
+
+- **Line 4212-4248**: `processLoadedDocxComments` iterates comments and then calls `createCommentForTrackChanges`
+- **Line 4249-4277**: `createCommentForTrackChanges` scans for track marks and dispatches transactions with `TrackChangesBasePluginKey`
+- **Line 4307-4315**: `getFloatingComments` computed property reads from `commentsList`
+- **Line 17855**: Floating comments only render when `getFloatingComments.value?.length > 0`
+
+## Key Insight
+
+The HTML-to-DOCX conversion approach is NOT required. The actual fix is calling `processLoadedDocxComments` after setting content. SuperDoc's native HTML loading works fine for the source document.
+
+## Example Integration
+
+```typescript
+// 1. Set merged content with track marks
+setEditorContent(superdoc.activeEditor, mergedJsonWithTrackMarks);
+
+// 2. Enable review mode
+superdoc.setTrackedChangesPreferences({ mode: 'review', enabled: true });
+
+// 3. Trigger comment creation for track bubbles
+setTimeout(() => {
+  superdoc.commentsStore?.processLoadedDocxComments({
+    superdoc,
+    editor: superdoc.activeEditor,
+    comments: [],
+    documentId: superdoc.activeEditor?.options?.documentId || 'primary',
+  });
+}, 50);
+```

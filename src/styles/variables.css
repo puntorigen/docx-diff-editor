@@ -1,0 +1,65 @@
+/**
+ * CSS Variables for DocxDiffEditor
+ * Users can override these in their own CSS to customize the component.
+ */
+
+:root {
+  /* Primary colors */
+  --dde-primary-color: #007ACC;
+  --dde-primary-dark: #005B9C;
+  --dde-primary-light: #E8F0F8;
+
+  /* Track change colors */
+  --dde-insert-color: #10B981;
+  --dde-insert-bg: rgba(16, 185, 129, 0.1);
+  --dde-delete-color: #EF4444;
+  --dde-delete-bg: rgba(239, 68, 68, 0.1);
+  --dde-format-color: #F59E0B;
+  --dde-format-bg: rgba(245, 158, 11, 0.1);
+
+  /* Text colors */
+  --dde-text-color: #374151;
+  --dde-text-muted: #6B7280;
+  --dde-text-light: #9CA3AF;
+
+  /* Background colors */
+  --dde-bg-color: #FFFFFF;
+  --dde-bg-muted: #F9FAFB;
+  --dde-bg-overlay: rgba(255, 255, 255, 0.9);
+
+  /* Border colors */
+  --dde-border-color: #E5E7EB;
+  --dde-border-light: #F3F4F6;
+
+  /* Error colors */
+  --dde-error-color: #EF4444;
+  --dde-error-bg: #FEF2F2;
+
+  /* Spacing */
+  --dde-spacing-xs: 0.25rem;
+  --dde-spacing-sm: 0.5rem;
+  --dde-spacing-md: 1rem;
+  --dde-spacing-lg: 1.5rem;
+  --dde-spacing-xl: 2rem;
+
+  /* Border radius */
+  --dde-radius-sm: 0.25rem;
+  --dde-radius-md: 0.5rem;
+  --dde-radius-lg: 0.75rem;
+  --dde-radius-full: 9999px;
+
+  /* Shadows */
+  --dde-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --dde-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --dde-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  /* Transitions */
+  --dde-transition-fast: 100ms ease;
+  --dde-transition: 150ms ease;
+  --dde-transition-slow: 300ms ease;
+
+  /* Z-index layers */
+  --dde-z-loading: 100;
+  --dde-z-error: 100;
+}
+
