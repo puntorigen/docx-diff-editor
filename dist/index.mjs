@@ -1105,10 +1105,21 @@ var DocxDiffEditor = forwardRef(
          */
         async acceptAllChanges() {
           const editor = superdocRef.current?.activeEditor;
-          if (!editor) {
+          const sd = superdocRef.current;
+          if (!editor || !sd) {
             throw new Error("Editor not ready");
           }
-          editor.commands.acceptAllChanges();
+          const editorAny = editor;
+          const sdAny = sd;
+          if (typeof editorAny.commands?.acceptAllChanges === "function") {
+            editorAny.commands.acceptAllChanges();
+          } else if (typeof sdAny.commands?.acceptAllChanges === "function") {
+            sdAny.commands.acceptAllChanges();
+          } else if (typeof sdAny.acceptAllChanges === "function") {
+            sdAny.acceptAllChanges();
+          } else {
+            sd.setTrackedChangesPreferences?.({ mode: "final", enabled: true });
+          }
           const cleanJson = editor.getJSON();
           setMergedJson(null);
           setDiffResult(null);
