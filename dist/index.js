@@ -755,7 +755,7 @@ var DocxDiffEditor = react.forwardRef(
     }, []);
     const setEditingMode = react.useCallback((sd) => {
       if (sd.setTrackedChangesPreferences) {
-        sd.setTrackedChangesPreferences({ mode: "simple", enabled: false });
+        sd.setTrackedChangesPreferences({ mode: "off", enabled: false });
       }
     }, []);
     const handleError = react.useCallback(

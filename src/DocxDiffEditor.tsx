@@ -163,9 +163,9 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
      */
     const setEditingMode = useCallback((sd: SuperDocInstance) => {
       if (sd.setTrackedChangesPreferences) {
-        // Use 'simple' mode with track changes disabled for clean editing view
-        // Valid modes are: 'review', 'simple', 'original'
-        sd.setTrackedChangesPreferences({ mode: 'simple', enabled: false });
+        // Use 'off' mode with track changes disabled for clean editing view
+        // Valid modes (superdoc 1.3+): 'review', 'original', 'final', 'off'
+        sd.setTrackedChangesPreferences({ mode: 'off', enabled: false });
       }
     }, []);
 
