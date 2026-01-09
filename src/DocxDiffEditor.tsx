@@ -42,6 +42,50 @@ const permissionResolver = ({ permission }: any) => {
 };
 
 /**
+ * Accept all track changes in a ProseMirror JSON document.
+ * - Removes text with trackDelete marks
+ * - Keeps text with trackInsert marks (removes the mark)
+ * - Keeps text with trackFormat marks with new formatting (removes the mark)
+ */
+function acceptAllChangesInJson(node: ProseMirrorJSON): ProseMirrorJSON | null {
+  if (!node) return null;
+
+  // Handle text nodes
+  if (node.type === 'text') {
+    const marks = node.marks || [];
+    
+    // Check if this text has a trackDelete mark - if so, remove entirely
+    if (marks.some((m: { type: string }) => m.type === 'trackDelete')) {
+      return null;
+    }
+
+    // Filter out track marks, keep other marks
+    const cleanMarks = marks.filter(
+      (m: { type: string }) => !['trackInsert', 'trackDelete', 'trackFormat'].includes(m.type)
+    );
+
+    return {
+      ...node,
+      marks: cleanMarks.length > 0 ? cleanMarks : undefined,
+    };
+  }
+
+  // Handle nodes with content
+  if (node.content && Array.isArray(node.content)) {
+    const cleanContent = node.content
+      .map((child: ProseMirrorJSON) => acceptAllChangesInJson(child))
+      .filter((child: ProseMirrorJSON | null): child is ProseMirrorJSON => child !== null);
+
+    return {
+      ...node,
+      content: cleanContent.length > 0 ? cleanContent : undefined,
+    };
+  }
+
+  return node;
+}
+
+/**
  * DocxDiffEditor Component
  */
 export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>(
@@ -633,18 +677,22 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const sdAny = sd as any;
 
+          let cleanJson: ProseMirrorJSON;
+
           if (typeof editorAny.commands?.acceptAllChanges === 'function') {
             editorAny.commands.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else if (typeof sdAny.commands?.acceptAllChanges === 'function') {
             sdAny.commands.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else if (typeof sdAny.acceptAllChanges === 'function') {
             sdAny.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else {
-            // Fallback: set mode to 'final' which shows doc as if changes accepted
-            sd.setTrackedChangesPreferences?.({ mode: 'final', enabled: true });
+            // Fallback: process JSON manually to accept all changes
+            const currentJson = editor.getJSON();
+            cleanJson = acceptAllChangesInJson(currentJson) || { type: 'doc', content: [] };
           }
-
-          const cleanJson = editor.getJSON();
 
           // Clear comparison state since changes are now accepted
           setMergedJson(null);

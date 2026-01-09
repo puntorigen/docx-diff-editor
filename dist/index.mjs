@@ -670,6 +670,30 @@ function groupReplacements(changes) {
 var permissionResolver = ({ permission }) => {
   return TRACK_CHANGE_PERMISSIONS.includes(permission) ? true : void 0;
 };
+function acceptAllChangesInJson(node) {
+  if (!node) return null;
+  if (node.type === "text") {
+    const marks = node.marks || [];
+    if (marks.some((m) => m.type === "trackDelete")) {
+      return null;
+    }
+    const cleanMarks = marks.filter(
+      (m) => !["trackInsert", "trackDelete", "trackFormat"].includes(m.type)
+    );
+    return {
+      ...node,
+      marks: cleanMarks.length > 0 ? cleanMarks : void 0
+    };
+  }
+  if (node.content && Array.isArray(node.content)) {
+    const cleanContent = node.content.map((child) => acceptAllChangesInJson(child)).filter((child) => child !== null);
+    return {
+      ...node,
+      content: cleanContent.length > 0 ? cleanContent : void 0
+    };
+  }
+  return node;
+}
 var DocxDiffEditor = forwardRef(
   function DocxDiffEditor2({
     initialSource,
@@ -1111,16 +1135,20 @@ var DocxDiffEditor = forwardRef(
           }
           const editorAny = editor;
           const sdAny = sd;
+          let cleanJson;
           if (typeof editorAny.commands?.acceptAllChanges === "function") {
             editorAny.commands.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else if (typeof sdAny.commands?.acceptAllChanges === "function") {
             sdAny.commands.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else if (typeof sdAny.acceptAllChanges === "function") {
             sdAny.acceptAllChanges();
+            cleanJson = editor.getJSON();
           } else {
-            sd.setTrackedChangesPreferences?.({ mode: "final", enabled: true });
+            const currentJson = editor.getJSON();
+            cleanJson = acceptAllChangesInJson(currentJson) || { type: "doc", content: [] };
           }
-          const cleanJson = editor.getJSON();
           setMergedJson(null);
           setDiffResult(null);
           return cleanJson;
