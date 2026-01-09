@@ -18,7 +18,7 @@
  * SVG has its own rendering model and doesn't need CSS isolation the same way text content does.
  */
 .sd-editor-scoped,
-.sd-editor-scoped :where(*:not(svg):not(svg *)),
+.sd-editor-scoped :where(*:not(svg):not(svg *):not(.annotation):not([data-drag-handle])),
 .sd-editor-scoped :where(*:not(svg):not(svg *)::before),
 .sd-editor-scoped :where(*:not(svg):not(svg *)::after) {
   all: revert;
@@ -1807,7 +1807,7 @@ to {
   align-items: center;
   margin-right: 10px;
 }
-.slash-menu-item-icon svg {
+.slash-menu .slash-menu-item-icon svg {
   height: 12px;
   width: 12px;
 }
@@ -1989,10 +1989,10 @@ to {
   box-shadow: 0 0 4px rgba(74, 144, 226, 0.5);
 }
 
-.editor-element[data-v-8dd4cf59] {
+.editor-element[data-v-f5c4f915] {
   position: relative;
 }
-.super-editor-container[data-v-8dd4cf59] {
+.super-editor-container[data-v-f5c4f915] {
   width: auto;
   height: auto;
   /* min-width is controlled via inline style (containerStyle) to scale with zoom */
@@ -2001,14 +2001,20 @@ to {
   display: flex;
   flex-direction: column;
 }
-.ruler[data-v-8dd4cf59] {
+.ruler-host[data-v-f5c4f915] {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+.ruler[data-v-f5c4f915] {
   margin-bottom: 2px;
 }
-.super-editor[data-v-8dd4cf59] {
+.super-editor[data-v-f5c4f915] {
   color: initial;
   overflow: hidden;
 }
-.placeholder-editor[data-v-8dd4cf59] {
+.placeholder-editor[data-v-f5c4f915] {
   position: absolute;
   top: 0;
   left: 0;
@@ -2020,7 +2026,7 @@ to {
   background-color: white;
   box-sizing: border-box;
 }
-.placeholder-title[data-v-8dd4cf59] {
+.placeholder-title[data-v-f5c4f915] {
   display: flex;
   justify-content: center;
   margin-bottom: 40px;
@@ -2564,46 +2570,46 @@ img[data-v-7dd69850] {
   display: none;
 }
 
-.superdoc[data-v-1e96f708] {
+.superdoc[data-v-5196811d] {
   display: flex;
 }
-.right-sidebar[data-v-1e96f708] {
+.right-sidebar[data-v-5196811d] {
   min-width: 320px;
 }
-.floating-comments[data-v-1e96f708] {
+.floating-comments[data-v-5196811d] {
   min-width: 300px;
   width: 300px;
 }
-.superdoc__layers[data-v-1e96f708] {
+.superdoc__layers[data-v-5196811d] {
   height: 100%;
   position: relative;
   box-sizing: border-box;
 }
-.superdoc__document[data-v-1e96f708] {
+.superdoc__document[data-v-5196811d] {
   width: 100%;
   position: relative;
 }
-.superdoc__sub-document[data-v-1e96f708] {
+.superdoc__sub-document[data-v-5196811d] {
   width: 100%;
   position: relative;
 }
-.superdoc__selection-layer[data-v-1e96f708] {
+.superdoc__selection-layer[data-v-5196811d] {
   position: absolute;
   min-width: 100%;
   min-height: 100%;
   z-index: 10;
   pointer-events: none;
 }
-.superdoc__temp-selection[data-v-1e96f708] {
+.superdoc__temp-selection[data-v-5196811d] {
   position: absolute;
 }
-.superdoc__comments-layer[data-v-1e96f708] {
+.superdoc__comments-layer[data-v-5196811d] {
   /* position: absolute; */
   top: 0;
   height: 100%;
   position: relative;
 }
-.superdoc__right-sidebar[data-v-1e96f708] {
+.superdoc__right-sidebar[data-v-5196811d] {
   width: 320px;
   min-width: 320px;
   padding: 0 10px;
@@ -2613,14 +2619,14 @@ img[data-v-7dd69850] {
 }
 
 /* Tools styles */
-.tools[data-v-1e96f708] {
+.tools[data-v-5196811d] {
   position: absolute;
   z-index: 3;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.tools .tool-icon[data-v-1e96f708] {
+.tools .tool-icon[data-v-5196811d] {
   font-size: 20px;
   border-radius: 12px;
   border: none;
@@ -2628,7 +2634,7 @@ img[data-v-7dd69850] {
   background-color: #dbdbdb;
   cursor: pointer;
 }
-.tools-item[data-v-1e96f708] {
+.tools-item[data-v-5196811d] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2638,10 +2644,10 @@ img[data-v-7dd69850] {
   border-radius: 12px;
   cursor: pointer;
 }
-.tools-item i[data-v-1e96f708] {
+.tools-item i[data-v-5196811d] {
   cursor: pointer;
 }
-.superdoc__tools-icon[data-v-1e96f708] {
+.superdoc__tools-icon[data-v-5196811d] {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
@@ -2656,15 +2662,15 @@ img[data-v-7dd69850] {
 
 /* 834px is iPad screen size in portrait orientation */
 @media (max-width: 834px) {
-.superdoc .superdoc__layers[data-v-1e96f708] {
+.superdoc .superdoc__layers[data-v-5196811d] {
     margin: 0;
     border: 0 !important;
     box-shadow: none;
 }
-.superdoc__sub-document[data-v-1e96f708] {
+.superdoc__sub-document[data-v-5196811d] {
     max-width: 100%;
 }
-.superdoc__right-sidebar[data-v-1e96f708] {
+.superdoc__right-sidebar[data-v-5196811d] {
     padding: 10px;
     width: 55px;
     position: relative;
@@ -2672,7 +2678,7 @@ img[data-v-7dd69850] {
 }
 
 /* AI Writer styles */
-.ai-writer-container[data-v-1e96f708] {
+.ai-writer-container[data-v-5196811d] {
   position: fixed;
   z-index: 1000;
   background: white;
@@ -2690,13 +2696,13 @@ img[data-v-7dd69850] {
 } */
 
 /* Tools styles */
-.tools[data-v-1e96f708] {
+.tools[data-v-5196811d] {
   position: absolute;
   z-index: 3;
   display: flex;
   gap: 6px;
 }
-.tools .tool-icon[data-v-1e96f708] {
+.tools .tool-icon[data-v-5196811d] {
   font-size: 20px;
   border-radius: 12px;
   border: none;
@@ -2704,7 +2710,7 @@ img[data-v-7dd69850] {
   background-color: #dbdbdb;
   cursor: pointer;
 }
-.tools-item[data-v-1e96f708] {
+.tools-item[data-v-5196811d] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2715,18 +2721,18 @@ img[data-v-7dd69850] {
   border-radius: 12px;
   cursor: pointer;
 }
-.tools-item i[data-v-1e96f708] {
+.tools-item i[data-v-5196811d] {
   cursor: pointer;
 }
-.superdoc__tools-icon[data-v-1e96f708] {
+.superdoc__tools-icon[data-v-5196811d] {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
 }
-.ai-tool > svg[data-v-1e96f708] {
+.ai-tool > svg[data-v-5196811d] {
   fill: transparent;
 }
-.ai-tool[data-v-1e96f708]::before {
+.ai-tool[data-v-5196811d]::before {
   content: '';
   position: absolute;
   width: 20px;
@@ -2747,7 +2753,7 @@ img[data-v-7dd69850] {
   filter: brightness(1.2);
   transition: filter 0.2s ease;
 }
-.ai-tool[data-v-1e96f708]:hover::before {
+.ai-tool[data-v-5196811d]:hover::before {
   filter: brightness(1.3);
 }
 
