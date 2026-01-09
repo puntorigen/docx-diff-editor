@@ -210,8 +210,11 @@ export interface DocxDiffEditorProps {
  * Ref methods exposed by DocxDiffEditor
  */
 export interface DocxDiffEditorRef {
-  /** Set the source/base document */
+  /** Set the source/base document (destroys and recreates SuperDoc instance) */
   setSource(content: DocxContent): Promise<void>;
+
+  /** Update content in the existing editor without recreating SuperDoc instance */
+  updateContent(json: ProseMirrorJSON): void;
 
   /** Compare source with new content, show track changes */
   compareWith(content: DocxContent): Promise<ComparisonResult>;

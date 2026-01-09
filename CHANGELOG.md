@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.35] - 2026-01-09
+
+### Changed
+
+- Simplified `setEditorContent` to use direct ProseMirror transaction instead of non-existent SuperDoc methods.
+
+## [1.0.34] - 2026-01-09
+
+### Added
+
+- **`updateContent()` ref method**: New method to update editor content without destroying and recreating the SuperDoc instance. Preserves the DOCX template/styling, making it ideal for replacing content with translated JSON. Avoids Vue unmounting issues when working with externally loaded DOCX files.
+
 ## [1.0.33] - 2026-01-09
 
 ### Fixed

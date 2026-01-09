@@ -725,17 +725,11 @@ var DocxDiffEditor = forwardRef(
     const editorId = `dde-editor-${instanceId.current}`;
     const toolbarId = `dde-toolbar-${instanceId.current}`;
     const setEditorContent = useCallback((editor, json) => {
-      if (editor.commands?.setContent) {
-        editor.commands.setContent(json);
-      } else if (editor.setContent) {
-        editor.setContent(json);
-      } else {
-        const { state, view } = editor;
-        if (state?.doc && view && json.content) {
-          const newDoc = state.schema.nodeFromJSON(json);
-          const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
-          view.dispatch(tr);
-        }
+      const { state, view } = editor;
+      if (state?.doc && view && json.content) {
+        const newDoc = state.schema.nodeFromJSON(json);
+        const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
+        view.dispatch(tr);
       }
     }, []);
     const enableReviewMode = useCallback((sd) => {
@@ -918,8 +912,25 @@ var DocxDiffEditor = forwardRef(
       ref,
       () => ({
         /**
+         * Update content in the existing editor without recreating SuperDoc instance.
+         * Preserves the DOCX template/styling. Ideal for replacing content with translated JSON.
+         */
+        updateContent(json) {
+          const editor = superdocRef.current?.activeEditor;
+          if (!editor) {
+            throw new Error("Editor not ready");
+          }
+          setEditorContent(editor, json);
+          setSourceJson(json);
+          setMergedJson(null);
+          setDiffResult(null);
+          onSourceLoaded?.(json);
+        },
+        /**
          * Set the source/base document.
          * Accepts File (DOCX), HTML string, or ProseMirror JSON.
+         * Note: This destroys and recreates the SuperDoc instance.
+         * For JSON content updates, prefer updateContent() to preserve the existing template.
          */
         async setSource(content) {
           if (!SuperDocRef.current) {
