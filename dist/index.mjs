@@ -1349,6 +1349,17 @@ var DocxDiffEditor = forwardRef(
             if (editor.converter) {
               editor.converter.documentModified = true;
             }
+            if (editor.converter?.schemaToXml) {
+              const serialized = editor.converter.schemaToXml(coreXml.elements[0]);
+              if (!editor.options) {
+                editor.options = {};
+              }
+              if (!editor.options.customUpdatedFiles) {
+                editor.options.customUpdatedFiles = {};
+              }
+              editor.options.customUpdatedFiles["docProps/core.xml"] = String(serialized);
+              editor.options.isCustomXmlChanged = true;
+            }
             return true;
           } catch (err) {
             console.warn("[DocxDiffEditor] Failed to set properties:", err);

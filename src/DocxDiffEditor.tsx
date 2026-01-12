@@ -956,9 +956,25 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               }
             }
 
-            // Mark document as modified so changes are included in export
+            // Mark document as modified
             if (editor.converter) {
               editor.converter.documentModified = true;
+            }
+
+            // Serialize and register for export
+            // This ensures changes are included when downloading the DOCX
+            if (editor.converter?.schemaToXml) {
+              const serialized = editor.converter.schemaToXml(coreXml.elements[0]);
+              
+              if (!editor.options) {
+                editor.options = {};
+              }
+              if (!editor.options.customUpdatedFiles) {
+                editor.options.customUpdatedFiles = {};
+              }
+              
+              editor.options.customUpdatedFiles['docProps/core.xml'] = String(serialized);
+              editor.options.isCustomXmlChanged = true;
             }
 
             return true;
