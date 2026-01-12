@@ -132,6 +132,9 @@ interface DocxDiffEditorRef {
 
   // Check if ready
   isReady(): boolean;
+
+  // Get current page count
+  getPages(): number;
 }
 ```
 

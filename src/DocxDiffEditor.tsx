@@ -719,6 +719,36 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         isReady(): boolean {
           return readyRef.current;
         },
+
+        /**
+         * Get the current page count from the presentation editor.
+         * Returns 0 if editor is not ready or pages are unavailable.
+         */
+        getPages(): number {
+          if (!readyRef.current || !superdocRef.current) {
+            return 0;
+          }
+
+          try {
+            // Access the document from the superdoc store
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sd = superdocRef.current as any;
+            const doc = sd.superdocStore?.documents?.[0];
+            
+            if (!doc) {
+              return 0;
+            }
+
+            // Get the PresentationEditor and retrieve page count
+            const presentationEditor = doc.getPresentationEditor?.();
+            const pages = presentationEditor?.getPages?.();
+            
+            return pages?.length ?? 0;
+          } catch (err) {
+            console.warn('[DocxDiffEditor] Failed to get page count:', err);
+            return 0;
+          }
+        },
       }),
       [
         sourceJson,

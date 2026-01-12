@@ -242,6 +242,9 @@ export interface DocxDiffEditorRef {
 
   /** Check if editor is ready */
   isReady(): boolean;
+
+  /** Get the current page count from the presentation editor */
+  getPages(): number;
 }
 
 // ============================================================================
