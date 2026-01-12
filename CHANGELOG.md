@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.38] - 2026-01-12
+
+### Added
+
+- **`getProperties()` ref method**: New async method to retrieve document core properties from `docProps/core.xml`. Returns properties like `title`, `author`, `subject`, `keywords`, `description`, `category`, `lastModifiedBy`, `revision`, `created`, and `modified`. Date fields are returned as `Date` objects.
+- **`setProperties()` ref method**: New async method to update document core properties. Accepts a partial `DocumentProperties` object - only provided properties are updated, others are preserved. Date fields accept `Date` objects which are converted to ISO strings internally.
+- **`DocumentProperties` type**: New exported type for document core properties.
+
 ## [1.0.37] - 2026-01-12
 
 ### Added

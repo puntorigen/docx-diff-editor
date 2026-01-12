@@ -35,6 +35,9 @@ export type {
 
   // Document info type
   DocumentInfo,
+
+  // Document properties type
+  DocumentProperties,
 } from './types';
 
 // Services (for advanced usage)

@@ -162,6 +162,36 @@ export interface TrackChangeAuthor {
 }
 
 // ============================================================================
+// Document Properties Types
+// ============================================================================
+
+/**
+ * Document core properties (stored in docProps/core.xml)
+ */
+export interface DocumentProperties {
+  /** Document title (dc:title) */
+  title?: string;
+  /** Original author (dc:creator) */
+  author?: string;
+  /** Subject/topic (dc:subject) */
+  subject?: string;
+  /** Comments/description (dc:description) */
+  description?: string;
+  /** Keywords/tags (cp:keywords) */
+  keywords?: string;
+  /** Category (cp:category) */
+  category?: string;
+  /** Last modified by (cp:lastModifiedBy) */
+  lastModifiedBy?: string;
+  /** Revision number (cp:revision) */
+  revision?: string;
+  /** Creation date (dcterms:created) */
+  created?: Date;
+  /** Last modified date (dcterms:modified) */
+  modified?: Date;
+}
+
+// ============================================================================
 // Document Info Types
 // ============================================================================
 
@@ -272,6 +302,12 @@ export interface DocxDiffEditorRef {
 
   /** Get combined document metadata and statistics */
   getDocumentInfo(): DocumentInfo | null;
+
+  /** Get document core properties (from docProps/core.xml) */
+  getProperties(): Promise<DocumentProperties | null>;
+
+  /** Set document core properties (partial update) */
+  setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
 }
 
 // ============================================================================

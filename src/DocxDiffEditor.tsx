@@ -26,6 +26,7 @@ import type {
   ComparisonResult,
   EnrichedChange,
   DocumentInfo,
+  DocumentProperties,
 } from './types';
 
 import { parseDocxFile, detectContentType, isProseMirrorJSON } from './services/contentResolver';
@@ -798,6 +799,157 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           } catch (err) {
             console.warn('[DocxDiffEditor] Failed to get document info:', err);
             return null;
+          }
+        },
+
+        /**
+         * Get document core properties from docProps/core.xml.
+         * Returns null if editor is not ready or properties unavailable.
+         */
+        async getProperties(): Promise<DocumentProperties | null> {
+          if (!readyRef.current || !superdocRef.current) {
+            return null;
+          }
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sd = superdocRef.current as any;
+            const doc = sd.superdocStore?.documents?.[0];
+            
+            if (!doc) {
+              return null;
+            }
+
+            const editor = doc.getEditor?.();
+            if (!editor) {
+              return null;
+            }
+
+            // Get the core.xml content as JSON
+            const coreProps = editor.getInternalXmlFile?.('docProps/core.xml', 'json');
+            if (!coreProps?.elements) {
+              return null;
+            }
+
+            // Property mapping from XML element names to our interface
+            const xmlToKey: Record<string, keyof DocumentProperties> = {
+              'dc:title': 'title',
+              'dc:creator': 'author',
+              'dc:subject': 'subject',
+              'dc:description': 'description',
+              'cp:keywords': 'keywords',
+              'cp:category': 'category',
+              'cp:lastModifiedBy': 'lastModifiedBy',
+              'cp:revision': 'revision',
+              'dcterms:created': 'created',
+              'dcterms:modified': 'modified',
+            };
+
+            const props: DocumentProperties = {};
+
+            // Parse elements from the core properties
+            for (const el of coreProps.elements) {
+              const key = xmlToKey[el.name];
+              if (key) {
+                const textValue = el.elements?.[0]?.text;
+                if (textValue !== undefined && textValue !== null) {
+                  if (key === 'created' || key === 'modified') {
+                    // Convert ISO string to Date object
+                    props[key] = new Date(textValue);
+                  } else {
+                    props[key] = textValue;
+                  }
+                }
+              }
+            }
+
+            return props;
+          } catch (err) {
+            console.warn('[DocxDiffEditor] Failed to get properties:', err);
+            return null;
+          }
+        },
+
+        /**
+         * Set document core properties (partial update).
+         * Only provided properties will be updated; others are preserved.
+         * Returns true on success, false on failure.
+         */
+        async setProperties(properties: Partial<DocumentProperties>): Promise<boolean> {
+          if (!readyRef.current || !superdocRef.current) {
+            return false;
+          }
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sd = superdocRef.current as any;
+            const doc = sd.superdocStore?.documents?.[0];
+            
+            if (!doc) {
+              return false;
+            }
+
+            const editor = doc.getEditor?.();
+            if (!editor) {
+              return false;
+            }
+
+            // Get the current core.xml content
+            const coreProps = editor.getInternalXmlFile?.('docProps/core.xml', 'json');
+            if (!coreProps?.elements) {
+              return false;
+            }
+
+            // Property mapping from our interface to XML element names
+            const keyToXml: Record<string, string> = {
+              title: 'dc:title',
+              author: 'dc:creator',
+              subject: 'dc:subject',
+              description: 'dc:description',
+              keywords: 'cp:keywords',
+              category: 'cp:category',
+              lastModifiedBy: 'cp:lastModifiedBy',
+              revision: 'cp:revision',
+              created: 'dcterms:created',
+              modified: 'dcterms:modified',
+            };
+
+            // Update or add properties
+            for (const [key, value] of Object.entries(properties)) {
+              if (value === undefined) continue;
+
+              const xmlName = keyToXml[key];
+              if (!xmlName) continue;
+
+              // Convert Date objects to ISO strings
+              const textValue = value instanceof Date ? value.toISOString() : String(value);
+
+              // Find existing element or create new one
+              let found = false;
+              for (const el of coreProps.elements) {
+                if (el.name === xmlName) {
+                  el.elements = [{ type: 'text', text: textValue }];
+                  found = true;
+                  break;
+                }
+              }
+
+              if (!found) {
+                // Add new element
+                coreProps.elements.push({
+                  type: 'element',
+                  name: xmlName,
+                  elements: [{ type: 'text', text: textValue }],
+                });
+              }
+            }
+
+            // Save changes back
+            editor.updateInternalXmlFile?.('docProps/core.xml', { elements: [coreProps] });
+            return true;
+          } catch (err) {
+            console.warn('[DocxDiffEditor] Failed to set properties:', err);
+            return false;
           }
         },
       }),

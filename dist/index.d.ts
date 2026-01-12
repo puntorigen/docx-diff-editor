@@ -110,6 +110,31 @@ interface TrackChangeAuthor {
     email: string;
 }
 /**
+ * Document core properties (stored in docProps/core.xml)
+ */
+interface DocumentProperties {
+    /** Document title (dc:title) */
+    title?: string;
+    /** Original author (dc:creator) */
+    author?: string;
+    /** Subject/topic (dc:subject) */
+    subject?: string;
+    /** Comments/description (dc:description) */
+    description?: string;
+    /** Keywords/tags (cp:keywords) */
+    keywords?: string;
+    /** Category (cp:category) */
+    category?: string;
+    /** Last modified by (cp:lastModifiedBy) */
+    lastModifiedBy?: string;
+    /** Revision number (cp:revision) */
+    revision?: string;
+    /** Creation date (dcterms:created) */
+    created?: Date;
+    /** Last modified date (dcterms:modified) */
+    modified?: Date;
+}
+/**
  * Combined document metadata and statistics
  */
 interface DocumentInfo {
@@ -187,6 +212,10 @@ interface DocxDiffEditorRef {
     getPages(): number;
     /** Get combined document metadata and statistics */
     getDocumentInfo(): DocumentInfo | null;
+    /** Get document core properties (from docProps/core.xml) */
+    getProperties(): Promise<DocumentProperties | null>;
+    /** Set document core properties (partial update) */
+    setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
 }
 
 /**
@@ -334,4 +363,4 @@ declare function getBlankTemplateBlob(): Blob;
  */
 declare function isValidDocxFile(file: File): boolean;
 
-export { CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FormatChange, type FormatDetails, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type TrackChangeAuthor, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, extractEnrichedChanges, getBlankTemplateBlob, getBlankTemplateFile, isProseMirrorJSON, isValidDocxFile, mergeDocuments, parseDocxFile };
+export { CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocumentProperties, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FormatChange, type FormatDetails, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type TrackChangeAuthor, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, extractEnrichedChanges, getBlankTemplateBlob, getBlankTemplateFile, isProseMirrorJSON, isValidDocxFile, mergeDocuments, parseDocxFile };

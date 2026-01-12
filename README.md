@@ -138,6 +138,12 @@ interface DocxDiffEditorRef {
 
   // Get document metadata and statistics
   getDocumentInfo(): DocumentInfo | null;
+
+  // Get document core properties
+  getProperties(): Promise<DocumentProperties | null>;
+
+  // Set document core properties (partial update)
+  setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
 }
 ```
 
@@ -170,6 +176,23 @@ interface DocumentInfo {
 }
 ```
 
+### DocumentProperties
+
+```tsx
+interface DocumentProperties {
+  title?: string;
+  author?: string;
+  subject?: string;
+  description?: string;
+  keywords?: string;
+  category?: string;
+  lastModifiedBy?: string;
+  revision?: string;
+  created?: Date;
+  modified?: Date;
+}
+```
+
 ## Getting LLM Context
 
 Extract enriched changes with semantic context for AI/LLM processing:
@@ -195,6 +218,30 @@ await fetch('/api/summarize', {
 //   },
 //   surroundingText: 'Hello world, welcome to...'
 // }
+```
+
+## Document Properties
+
+Read and update document metadata (stored in `docProps/core.xml`):
+
+```tsx
+// Get current properties
+const props = await editorRef.current?.getProperties();
+if (props) {
+  console.log(`Title: ${props.title}`);
+  console.log(`Author: ${props.author}`);
+  console.log(`Created: ${props.created?.toLocaleDateString()}`);
+  console.log(`Modified: ${props.modified?.toLocaleDateString()}`);
+}
+
+// Update properties (partial update - only specified fields are changed)
+await editorRef.current?.setProperties({
+  title: 'Quarterly Report Q4 2026',
+  author: 'Jane Smith',
+  subject: 'Financial Summary',
+  keywords: 'report, quarterly, finance, 2026',
+  modified: new Date(),
+});
 ```
 
 ## Customization
