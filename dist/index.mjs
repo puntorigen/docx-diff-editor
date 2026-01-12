@@ -1169,6 +1169,65 @@ var DocxDiffEditor = forwardRef(
          */
         isReady() {
           return readyRef.current;
+        },
+        /**
+         * Get the current page count from the presentation editor.
+         * Returns 0 if editor is not ready or pages are unavailable.
+         */
+        getPages() {
+          if (!readyRef.current || !superdocRef.current) {
+            return 0;
+          }
+          try {
+            const sd = superdocRef.current;
+            const doc = sd.superdocStore?.documents?.[0];
+            if (!doc) {
+              return 0;
+            }
+            const presentationEditor = doc.getPresentationEditor?.();
+            const pages = presentationEditor?.getPages?.();
+            return pages?.length ?? 0;
+          } catch (err) {
+            console.warn("[DocxDiffEditor] Failed to get page count:", err);
+            return 0;
+          }
+        },
+        /**
+         * Get combined document metadata and statistics.
+         * Returns null if editor is not ready.
+         */
+        getDocumentInfo() {
+          if (!readyRef.current || !superdocRef.current) {
+            return null;
+          }
+          try {
+            const sd = superdocRef.current;
+            const doc = sd.superdocStore?.documents?.[0];
+            if (!doc) {
+              return null;
+            }
+            const editor = doc.getEditor?.();
+            const metadata = editor?.getMetadata?.() ?? {};
+            const stats = editor?.commands?.getDocumentStats?.() ?? {};
+            const presentationEditor = doc.getPresentationEditor?.();
+            const pages = presentationEditor?.getPages?.();
+            const pageCount = pages?.length ?? 0;
+            return {
+              // Metadata
+              documentGuid: metadata.documentGuid ?? null,
+              isModified: metadata.isModified ?? false,
+              version: metadata.version ?? null,
+              // Stats
+              words: stats.words ?? 0,
+              characters: stats.characters ?? 0,
+              paragraphs: stats.paragraphs ?? 0,
+              // Pages
+              pages: pageCount
+            };
+          } catch (err) {
+            console.warn("[DocxDiffEditor] Failed to get document info:", err);
+            return null;
+          }
         }
       }),
       [

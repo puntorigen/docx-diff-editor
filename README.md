@@ -135,6 +135,9 @@ interface DocxDiffEditorRef {
 
   // Get current page count
   getPages(): number;
+
+  // Get document metadata and statistics
+  getDocumentInfo(): DocumentInfo | null;
 }
 ```
 
@@ -148,6 +151,22 @@ interface ComparisonResult {
   formatChanges: number;
   summary: string[];
   mergedJson: ProseMirrorJSON;
+}
+```
+
+### DocumentInfo
+
+```tsx
+interface DocumentInfo {
+  // Metadata
+  documentGuid: string | null;
+  isModified: boolean;
+  version: number | null;
+  // Statistics
+  words: number;
+  characters: number;
+  paragraphs: number;
+  pages: number;
 }
 ```
 

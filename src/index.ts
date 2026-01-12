@@ -32,6 +32,9 @@ export type {
 
   // Author type
   TrackChangeAuthor,
+
+  // Document info type
+  DocumentInfo,
 } from './types';
 
 // Services (for advanced usage)

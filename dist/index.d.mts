@@ -110,6 +110,25 @@ interface TrackChangeAuthor {
     email: string;
 }
 /**
+ * Combined document metadata and statistics
+ */
+interface DocumentInfo {
+    /** Document unique identifier */
+    documentGuid: string | null;
+    /** Whether the document has unsaved changes */
+    isModified: boolean;
+    /** Document version number */
+    version: number | null;
+    /** Word count */
+    words: number;
+    /** Character count */
+    characters: number;
+    /** Paragraph count */
+    paragraphs: number;
+    /** Page count */
+    pages: number;
+}
+/**
  * Props for DocxDiffEditor component
  */
 interface DocxDiffEditorProps {
@@ -164,6 +183,10 @@ interface DocxDiffEditorRef {
     acceptAllChanges(): Promise<ProseMirrorJSON>;
     /** Check if editor is ready */
     isReady(): boolean;
+    /** Get the current page count from the presentation editor */
+    getPages(): number;
+    /** Get combined document metadata and statistics */
+    getDocumentInfo(): DocumentInfo | null;
 }
 
 /**
@@ -311,4 +334,4 @@ declare function getBlankTemplateBlob(): Blob;
  */
 declare function isValidDocxFile(file: File): boolean;
 
-export { CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FormatChange, type FormatDetails, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type TrackChangeAuthor, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, extractEnrichedChanges, getBlankTemplateBlob, getBlankTemplateFile, isProseMirrorJSON, isValidDocxFile, mergeDocuments, parseDocxFile };
+export { CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FormatChange, type FormatDetails, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type TrackChangeAuthor, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, extractEnrichedChanges, getBlankTemplateBlob, getBlankTemplateFile, isProseMirrorJSON, isValidDocxFile, mergeDocuments, parseDocxFile };

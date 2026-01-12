@@ -25,6 +25,7 @@ import type {
   DiffResult,
   ComparisonResult,
   EnrichedChange,
+  DocumentInfo,
 } from './types';
 
 import { parseDocxFile, detectContentType, isProseMirrorJSON } from './services/contentResolver';
@@ -747,6 +748,56 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           } catch (err) {
             console.warn('[DocxDiffEditor] Failed to get page count:', err);
             return 0;
+          }
+        },
+
+        /**
+         * Get combined document metadata and statistics.
+         * Returns null if editor is not ready.
+         */
+        getDocumentInfo(): DocumentInfo | null {
+          if (!readyRef.current || !superdocRef.current) {
+            return null;
+          }
+
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sd = superdocRef.current as any;
+            const doc = sd.superdocStore?.documents?.[0];
+            
+            if (!doc) {
+              return null;
+            }
+
+            // Get the editor instance
+            const editor = doc.getEditor?.();
+            
+            // Get metadata
+            const metadata = editor?.getMetadata?.() ?? {};
+            
+            // Get stats
+            const stats = editor?.commands?.getDocumentStats?.() ?? {};
+            
+            // Get page count
+            const presentationEditor = doc.getPresentationEditor?.();
+            const pages = presentationEditor?.getPages?.();
+            const pageCount = pages?.length ?? 0;
+
+            return {
+              // Metadata
+              documentGuid: metadata.documentGuid ?? null,
+              isModified: metadata.isModified ?? false,
+              version: metadata.version ?? null,
+              // Stats
+              words: stats.words ?? 0,
+              characters: stats.characters ?? 0,
+              paragraphs: stats.paragraphs ?? 0,
+              // Pages
+              pages: pageCount,
+            };
+          } catch (err) {
+            console.warn('[DocxDiffEditor] Failed to get document info:', err);
+            return null;
           }
         },
       }),

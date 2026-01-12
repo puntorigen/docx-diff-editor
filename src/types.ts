@@ -162,6 +162,30 @@ export interface TrackChangeAuthor {
 }
 
 // ============================================================================
+// Document Info Types
+// ============================================================================
+
+/**
+ * Combined document metadata and statistics
+ */
+export interface DocumentInfo {
+  /** Document unique identifier */
+  documentGuid: string | null;
+  /** Whether the document has unsaved changes */
+  isModified: boolean;
+  /** Document version number */
+  version: number | null;
+  /** Word count */
+  words: number;
+  /** Character count */
+  characters: number;
+  /** Paragraph count */
+  paragraphs: number;
+  /** Page count */
+  pages: number;
+}
+
+// ============================================================================
 // Component Props & Ref Types
 // ============================================================================
 
@@ -245,6 +269,9 @@ export interface DocxDiffEditorRef {
 
   /** Get the current page count from the presentation editor */
   getPages(): number;
+
+  /** Get combined document metadata and statistics */
+  getDocumentInfo(): DocumentInfo | null;
 }
 
 // ============================================================================

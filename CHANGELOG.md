@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.37] - 2026-01-12
+
+### Added
+
+- **`getDocumentInfo()` ref method**: New method that returns combined document metadata and statistics in a single call. Includes `documentGuid`, `isModified`, `version`, `words`, `characters`, `paragraphs`, and `pages`. Returns `null` if editor is not ready.
+- **`DocumentInfo` type**: New exported type for the unified document info object.
+
 ## [1.0.36] - 2026-01-12
 
 ### Added
