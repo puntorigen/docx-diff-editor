@@ -825,11 +825,14 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               return null;
             }
 
-            // Get the core.xml content as JSON
-            const coreProps = editor.getInternalXmlFile?.('docProps/core.xml', 'json');
-            if (!coreProps?.elements) {
+            // Access core.xml via converter.convertedXml
+            const coreXml = editor.converter?.convertedXml?.['docProps/core.xml'];
+            if (!coreXml?.elements?.[0]?.elements) {
               return null;
             }
+
+            // The root element is cp:coreProperties, get its children
+            const elements = coreXml.elements[0].elements;
 
             // Property mapping from XML element names to our interface
             const xmlToKey: Record<string, keyof DocumentProperties> = {
@@ -848,7 +851,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             const props: DocumentProperties = {};
 
             // Parse elements from the core properties
-            for (const el of coreProps.elements) {
+            for (const el of elements) {
               const key = xmlToKey[el.name];
               if (key) {
                 const textValue = el.elements?.[0]?.text;
@@ -873,6 +876,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         /**
          * Set document core properties (partial update).
          * Only provided properties will be updated; others are preserved.
+         * Preserves XML namespaces and structure for valid DOCX output.
          * Returns true on success, false on failure.
          */
         async setProperties(properties: Partial<DocumentProperties>): Promise<boolean> {
@@ -894,11 +898,16 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               return false;
             }
 
-            // Get the current core.xml content
-            const coreProps = editor.getInternalXmlFile?.('docProps/core.xml', 'json');
-            if (!coreProps?.elements) {
+            // Access core.xml via converter.convertedXml
+            const coreXml = editor.converter?.convertedXml?.['docProps/core.xml'];
+            if (!coreXml?.elements?.[0]?.elements) {
+              console.warn('[DocxDiffEditor] docProps/core.xml not found or invalid structure');
               return false;
             }
+
+            // The root element is cp:coreProperties, get its children
+            const coreProperties = coreXml.elements[0];
+            const elements = coreProperties.elements;
 
             // Property mapping from our interface to XML element names
             const keyToXml: Record<string, string> = {
@@ -924,19 +933,22 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               // Convert Date objects to ISO strings
               const textValue = value instanceof Date ? value.toISOString() : String(value);
 
-              // Find existing element or create new one
-              let found = false;
-              for (const el of coreProps.elements) {
-                if (el.name === xmlName) {
-                  el.elements = [{ type: 'text', text: textValue }];
-                  found = true;
-                  break;
-                }
-              }
+              // Find existing element
+              const existingProp = elements.find((el: { name: string }) => el.name === xmlName);
 
-              if (!found) {
-                // Add new element
-                coreProps.elements.push({
+              if (existingProp) {
+                // Update existing - preserve structure, only change text
+                if (!existingProp.elements) {
+                  existingProp.elements = [];
+                }
+                if (existingProp.elements[0]) {
+                  existingProp.elements[0].text = textValue;
+                } else {
+                  existingProp.elements.push({ type: 'text', text: textValue });
+                }
+              } else {
+                // Add new property element
+                elements.push({
                   type: 'element',
                   name: xmlName,
                   elements: [{ type: 'text', text: textValue }],
@@ -944,8 +956,11 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               }
             }
 
-            // Save changes back
-            editor.updateInternalXmlFile?.('docProps/core.xml', { elements: [coreProps] });
+            // Mark document as modified so changes are included in export
+            if (editor.converter) {
+              editor.converter.documentModified = true;
+            }
+
             return true;
           } catch (err) {
             console.warn('[DocxDiffEditor] Failed to set properties:', err);

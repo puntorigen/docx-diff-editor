@@ -1255,10 +1255,11 @@ var DocxDiffEditor = react.forwardRef(
             if (!editor) {
               return null;
             }
-            const coreProps = editor.getInternalXmlFile?.("docProps/core.xml", "json");
-            if (!coreProps?.elements) {
+            const coreXml = editor.converter?.convertedXml?.["docProps/core.xml"];
+            if (!coreXml?.elements?.[0]?.elements) {
               return null;
             }
+            const elements = coreXml.elements[0].elements;
             const xmlToKey = {
               "dc:title": "title",
               "dc:creator": "author",
@@ -1272,7 +1273,7 @@ var DocxDiffEditor = react.forwardRef(
               "dcterms:modified": "modified"
             };
             const props = {};
-            for (const el of coreProps.elements) {
+            for (const el of elements) {
               const key = xmlToKey[el.name];
               if (key) {
                 const textValue = el.elements?.[0]?.text;
@@ -1294,6 +1295,7 @@ var DocxDiffEditor = react.forwardRef(
         /**
          * Set document core properties (partial update).
          * Only provided properties will be updated; others are preserved.
+         * Preserves XML namespaces and structure for valid DOCX output.
          * Returns true on success, false on failure.
          */
         async setProperties(properties) {
@@ -1310,10 +1312,13 @@ var DocxDiffEditor = react.forwardRef(
             if (!editor) {
               return false;
             }
-            const coreProps = editor.getInternalXmlFile?.("docProps/core.xml", "json");
-            if (!coreProps?.elements) {
+            const coreXml = editor.converter?.convertedXml?.["docProps/core.xml"];
+            if (!coreXml?.elements?.[0]?.elements) {
+              console.warn("[DocxDiffEditor] docProps/core.xml not found or invalid structure");
               return false;
             }
+            const coreProperties = coreXml.elements[0];
+            const elements = coreProperties.elements;
             const keyToXml = {
               title: "dc:title",
               author: "dc:creator",
@@ -1331,23 +1336,27 @@ var DocxDiffEditor = react.forwardRef(
               const xmlName = keyToXml[key];
               if (!xmlName) continue;
               const textValue = value instanceof Date ? value.toISOString() : String(value);
-              let found = false;
-              for (const el of coreProps.elements) {
-                if (el.name === xmlName) {
-                  el.elements = [{ type: "text", text: textValue }];
-                  found = true;
-                  break;
+              const existingProp = elements.find((el) => el.name === xmlName);
+              if (existingProp) {
+                if (!existingProp.elements) {
+                  existingProp.elements = [];
                 }
-              }
-              if (!found) {
-                coreProps.elements.push({
+                if (existingProp.elements[0]) {
+                  existingProp.elements[0].text = textValue;
+                } else {
+                  existingProp.elements.push({ type: "text", text: textValue });
+                }
+              } else {
+                elements.push({
                   type: "element",
                   name: xmlName,
                   elements: [{ type: "text", text: textValue }]
                 });
               }
             }
-            editor.updateInternalXmlFile?.("docProps/core.xml", { elements: [coreProps] });
+            if (editor.converter) {
+              editor.converter.documentModified = true;
+            }
             return true;
           } catch (err) {
             console.warn("[DocxDiffEditor] Failed to set properties:", err);
