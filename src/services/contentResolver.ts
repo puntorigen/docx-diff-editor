@@ -39,6 +39,18 @@ export function isProseMirrorJSON(content: unknown): boolean {
 
 /**
  * Parse an HTML string into ProseMirror JSON using a hidden SuperDoc instance.
+ * 
+ * IMPORTANT: Uses the "paste" approach instead of the "import" approach.
+ * SuperDoc's import path (via `html` option) calls `stripHtmlStyles()` which
+ * removes all CSS styles except `text-align`. The paste path (via `view.pasteHTML()`)
+ * preserves inline styles like color, font-size, font-family, font-weight, etc.
+ * 
+ * Flow:
+ * 1. Create SuperDoc with empty HTML document
+ * 2. Wait for editor to be ready
+ * 3. Select all content and delete it (start fresh)
+ * 4. Use editor.view.pasteHTML(html) - this uses the paste path which preserves styles
+ * 5. Return the resulting JSON
  */
 export async function parseHtmlToJson(
   html: string,
@@ -76,10 +88,12 @@ export async function parseHtmlToJson(
       if (resolved) return;
 
       try {
+        // Create SuperDoc with minimal empty HTML (not the actual content)
+        // This avoids the import path which strips styles
         superdoc = new SuperDoc({
           selector: container,
-          html: html,
-          documentMode: 'viewing',
+          html: '<p></p>', // Minimal empty document
+          documentMode: 'editing', // Need editing mode to use paste
           rulers: false,
           user: { name: 'Parser', email: 'parser@local' },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -91,10 +105,34 @@ export async function parseHtmlToJson(
                 throw new Error('No active editor found');
               }
 
-              const json = editor.getJSON();
-              resolved = true;
-              cleanup();
-              resolve(json);
+              // Get the ProseMirror view
+              const view = editor.view;
+              if (!view) {
+                throw new Error('No editor view found');
+              }
+
+              // Select all content and delete it to start fresh
+              editor.commands.selectAll();
+              editor.commands.deleteSelection();
+
+              // Use pasteHTML which goes through the paste path
+              // This path does NOT call stripHtmlStyles(), preserving inline styles
+              view.pasteHTML(html);
+
+              // Small delay to let the paste operation complete
+              setTimeout(() => {
+                if (resolved) return;
+                try {
+                  const json = editor.getJSON();
+                  resolved = true;
+                  cleanup();
+                  resolve(json);
+                } catch (err) {
+                  resolved = true;
+                  cleanup();
+                  reject(err);
+                }
+              }, 50);
             } catch (err) {
               resolved = true;
               cleanup();

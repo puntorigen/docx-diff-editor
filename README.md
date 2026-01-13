@@ -257,12 +257,18 @@ await editorRef.current?.setProperties({
 
 ## Parsing HTML to JSON
 
-Convert HTML strings to ProseMirror JSON without visible rendering:
+Convert HTML strings to ProseMirror JSON without visible rendering. **Inline styles are preserved!**
 
 ```tsx
 // Using the ref method (requires editor to be initialized)
 const json = await editorRef.current?.parseHtml('<h1>Title</h1><p>Content here</p>');
 console.log(json); // { type: 'doc', content: [...] }
+
+// Inline styles are converted to marks
+const styledJson = await editorRef.current?.parseHtml(
+  '<p><span style="color: red; font-weight: bold;">styled text</span></p>'
+);
+// Result: text with textStyle mark (color) and bold mark
 
 // Use with other methods
 await editorRef.current?.updateContent(json);
@@ -271,6 +277,19 @@ await editorRef.current?.updateContent(json);
 import { parseHtmlToJson } from 'docx-diff-editor';
 const json = await parseHtmlToJson(htmlString, SuperDocClass);
 ```
+
+### Supported Inline Styles
+
+| CSS Property | ProseMirror Mark |
+|--------------|------------------|
+| `color` | `textStyle.color` |
+| `font-size` | `textStyle.fontSize` |
+| `font-family` | `textStyle.fontFamily` |
+| `font-weight: bold` | `bold` |
+| `font-style: italic` | `italic` |
+| `text-decoration: underline` | `underline` |
+| `text-decoration: line-through` | `strike` |
+| `background-color` | `highlight.color` |
 
 ## Customization
 

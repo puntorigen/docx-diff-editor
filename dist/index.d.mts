@@ -424,6 +424,18 @@ declare function detectContentType(content: DocxContent): 'file' | 'html' | 'jso
 declare function isProseMirrorJSON(content: unknown): boolean;
 /**
  * Parse an HTML string into ProseMirror JSON using a hidden SuperDoc instance.
+ *
+ * IMPORTANT: Uses the "paste" approach instead of the "import" approach.
+ * SuperDoc's import path (via `html` option) calls `stripHtmlStyles()` which
+ * removes all CSS styles except `text-align`. The paste path (via `view.pasteHTML()`)
+ * preserves inline styles like color, font-size, font-family, font-weight, etc.
+ *
+ * Flow:
+ * 1. Create SuperDoc with empty HTML document
+ * 2. Wait for editor to be ready
+ * 3. Select all content and delete it (start fresh)
+ * 4. Use editor.view.pasteHTML(html) - this uses the paste path which preserves styles
+ * 5. Return the resulting JSON
  */
 declare function parseHtmlToJson(html: string, SuperDoc: SuperDocConstructor): Promise<ProseMirrorJSON>;
 /**

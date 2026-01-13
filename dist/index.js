@@ -495,8 +495,10 @@ async function parseHtmlToJson(html, SuperDoc) {
       try {
         superdoc = new SuperDoc({
           selector: container,
-          html,
-          documentMode: "viewing",
+          html: "<p></p>",
+          // Minimal empty document
+          documentMode: "editing",
+          // Need editing mode to use paste
           rulers: false,
           user: { name: "Parser", email: "parser@local" },
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -507,10 +509,26 @@ async function parseHtmlToJson(html, SuperDoc) {
               if (!editor) {
                 throw new Error("No active editor found");
               }
-              const json = editor.getJSON();
-              resolved = true;
-              cleanup();
-              resolve(json);
+              const view = editor.view;
+              if (!view) {
+                throw new Error("No editor view found");
+              }
+              editor.commands.selectAll();
+              editor.commands.deleteSelection();
+              view.pasteHTML(html);
+              setTimeout(() => {
+                if (resolved) return;
+                try {
+                  const json = editor.getJSON();
+                  resolved = true;
+                  cleanup();
+                  resolve(json);
+                } catch (err) {
+                  resolved = true;
+                  cleanup();
+                  reject(err);
+                }
+              }, 50);
             } catch (err) {
               resolved = true;
               cleanup();

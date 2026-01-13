@@ -5473,6 +5473,9 @@ img[data-v-7dd69850] {
 /* Track Changes - SuperDoc track change styling */
 /* @import './track-changes.css'; */
 
+/* Structural Changes Pane - Floating panel for structural changes */
+/* @import './structural-pane.css'; */
+
 
 /**
  * CSS Variables for DocxDiffEditor

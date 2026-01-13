@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.44] - 2026-01-13
+
+### Fixed
+
+- **`parseHtml()` now preserves inline styles**: Changed the implementation to use SuperDoc's paste path (`view.pasteHTML()`) instead of the import path (`html` option). SuperDoc's import path intentionally strips all CSS styles except `text-align` via `stripHtmlStyles()`. The paste path preserves inline styles like `color`, `font-size`, `font-family`, `font-weight`, `font-style`, `text-decoration`, and `background-color`, converting them to proper ProseMirror marks.
+
+### Technical Details
+
+- **Before**: HTML like `<span style="color: red; font-weight: bold;">text</span>` would lose all styling
+- **After**: The same HTML now produces text with `textStyle` mark (for color) and `bold` mark (for font-weight)
+- The fix works by creating an empty SuperDoc instance, then using `view.pasteHTML()` which goes through SuperDoc's paste handler (`htmlHandler`) rather than the import handler (`createDocFromHTML` → `stripHtmlStyles`)
+
 ## [1.0.43] - 2026-01-13
 
 ### Fixed
