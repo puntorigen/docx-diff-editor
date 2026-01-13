@@ -20,6 +20,7 @@ import type {
 import {
   createTrackInsertMark,
   createTrackDeleteMark,
+  normalizeMarksForRendering,
 } from './trackChangeInjector';
 import { alignDocuments } from './nodeAligner';
 import { diffTables, isTable, getRowLocation, getRowPreview } from './tableBlockDiffer';
@@ -50,6 +51,7 @@ export interface BlockMergeResult {
 /**
  * Mark all text in a node as inserted (with shared ID).
  * Used for inserted blocks (rows, paragraphs, list items).
+ * Normalizes existing marks to ensure valid CSS color format.
  */
 function markAllTextAsInserted(
   node: ProseMirrorNode,
@@ -57,9 +59,11 @@ function markAllTextAsInserted(
   author: TrackChangeAuthor
 ): ProseMirrorNode {
   if (node.type === 'text') {
+    // Normalize existing marks to ensure valid CSS colors (# prefix for hex)
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...(node.marks || []), createTrackInsertMark(author, sharedId)],
+      marks: [...existingMarks, createTrackInsertMark(author, sharedId)],
     };
   }
 
@@ -78,6 +82,7 @@ function markAllTextAsInserted(
 /**
  * Mark all text in a node as deleted (with shared ID).
  * Used for deleted blocks (rows, paragraphs, list items).
+ * Normalizes existing marks to ensure valid CSS color format.
  */
 function markAllTextAsDeleted(
   node: ProseMirrorNode,
@@ -85,9 +90,11 @@ function markAllTextAsDeleted(
   author: TrackChangeAuthor
 ): ProseMirrorNode {
   if (node.type === 'text') {
+    // Normalize existing marks to ensure valid CSS colors (# prefix for hex)
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...(node.marks || []), createTrackDeleteMark(author, sharedId)],
+      marks: [...existingMarks, createTrackDeleteMark(author, sharedId)],
     };
   }
 

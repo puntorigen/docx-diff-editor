@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.48] - 2026-01-13
+
+### Fixed
+
+- **Track change bubbles now show complete change details**: Format change bubbles previously showed empty values like "Set font family to" without the actual value. This was caused by SuperDoc's `parseFormatList` filtering out marks without an `attrs` property.
+
+- **Text colors now render correctly in the editor**: Colors applied via format changes or inserted text now display properly in the editor. Previously, hex colors without `#` prefix (e.g., `ff0000` instead of `#ff0000`) resulted in invalid CSS.
+
+### Technical Details
+
+- **Mark normalization**: New `normalizeMarksForRendering()` function in `trackChangeInjector.ts` ensures:
+  1. All marks have an `attrs` property (even if empty) - required by SuperDoc's `parseFormatList`
+  2. Color values in `textStyle` marks have valid CSS format (`#` prefix for hex colors)
+  
+- **Applied in**:
+  - `createTrackFormatMark()` - normalizes `before`/`after` mark arrays
+  - `createInsertedTextNodes()` in `mergeDocuments.ts` - normalizes marks from docB
+  - Format change handling in `mergeDocuments.ts` - normalizes after marks
+  - `markAllTextAsInserted/Deleted()` in `structuralMerger.ts` and `blockLevelMerger.ts`
+
+- **Root cause analysis**:
+  - SuperDoc's `parseFormatList` (line 63964) filters: `format => hasOwn(format, "type") && hasOwn(format, "attrs")`
+  - SuperDoc's Color extension `renderDOM` uses `color: ${attrs.color}` directly - requires valid CSS color
+
 ## [1.0.47] - 2026-01-13
 
 ### Fixed

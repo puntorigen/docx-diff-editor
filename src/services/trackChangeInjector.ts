@@ -8,6 +8,73 @@ import type { TrackChangeAuthor, ProseMirrorJSON, ProseMirrorMark } from '../typ
 import { DEFAULT_AUTHOR } from '../constants';
 
 /**
+ * Ensure a color value is valid CSS (has # prefix for hex colors).
+ * SuperDoc's Color extension renderDOM uses the color value directly in CSS,
+ * so hex colors MUST have # prefix to be valid.
+ * 
+ * Examples:
+ * - "ff0000" → "#ff0000"
+ * - "#ff0000" → "#ff0000" (unchanged)
+ * - "red" → "red" (named colors unchanged)
+ * - "rgb(255,0,0)" → "rgb(255,0,0)" (rgb unchanged)
+ */
+function ensureValidCssColor(color: unknown): string | undefined {
+  if (typeof color !== 'string' || !color) {
+    return undefined;
+  }
+  
+  // If it's a 6-character hex without #, add the #
+  if (/^[0-9a-fA-F]{6}$/.test(color)) {
+    return `#${color}`;
+  }
+  
+  // If it's a 3-character hex without #, add the #
+  if (/^[0-9a-fA-F]{3}$/.test(color)) {
+    return `#${color}`;
+  }
+  
+  // Already has # or is a named color/rgb/etc - return as-is
+  return color;
+}
+
+/**
+ * Normalize a mark to ensure it has an `attrs` property and valid color format.
+ * 
+ * SuperDoc requirements:
+ * 1. parseFormatList filters out marks without `attrs`
+ * 2. Color extension renderDOM uses attrs.color directly in CSS (needs # for hex)
+ */
+function normalizeMark(mark: ProseMirrorMark): ProseMirrorMark {
+  const attrs = { ...(mark.attrs || {}) };
+  
+  // Ensure color has valid CSS format (# prefix for hex colors)
+  if (attrs.color !== undefined) {
+    attrs.color = ensureValidCssColor(attrs.color);
+  }
+  
+  return {
+    type: mark.type,
+    attrs,
+  };
+}
+
+/**
+ * Normalize an array of marks to ensure all have `attrs` property
+ * and valid color formats.
+ */
+function normalizeMarks(marks: ProseMirrorMark[]): ProseMirrorMark[] {
+  return marks.map(normalizeMark);
+}
+
+/**
+ * Normalize marks for DOM rendering.
+ * Exported for use in other modules that apply marks to text nodes.
+ */
+export function normalizeMarksForRendering(marks: ProseMirrorMark[]): ProseMirrorMark[] {
+  return normalizeMarks(marks);
+}
+
+/**
  * Create a trackInsert mark.
  * @param author - The author of the change
  * @param id - Optional ID to use (for linking with corresponding delete in replacements)
@@ -51,12 +118,22 @@ export function createTrackDeleteMark(
 
 /**
  * Create a trackFormat mark.
+ * 
+ * Note: SuperDoc's parseFormatList requires all marks in before/after arrays
+ * to have both `type` and `attrs` properties. Marks without `attrs` get filtered out,
+ * causing empty values in track change bubbles. We normalize marks here to ensure
+ * all have at least an empty `attrs` object.
  */
 export function createTrackFormatMark(
   before: ProseMirrorMark[],
   after: ProseMirrorMark[],
   author: TrackChangeAuthor = DEFAULT_AUTHOR
 ): ProseMirrorMark {
+  // Normalize marks to ensure all have `attrs` property
+  // This is required by SuperDoc's parseFormatList which filters marks without attrs
+  const normalizedBefore = normalizeMarks(before);
+  const normalizedAfter = normalizeMarks(after);
+
   return {
     type: 'trackFormat',
     attrs: {
@@ -65,8 +142,8 @@ export function createTrackFormatMark(
       authorEmail: author.email,
       authorImage: '',
       date: new Date().toISOString(),
-      before,
-      after,
+      before: normalizedBefore,
+      after: normalizedAfter,
     },
   };
 }

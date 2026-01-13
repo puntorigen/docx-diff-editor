@@ -513,6 +513,11 @@ declare function createTrackInsertMark(author?: TrackChangeAuthor, id?: string):
 declare function createTrackDeleteMark(author?: TrackChangeAuthor, id?: string): ProseMirrorMark;
 /**
  * Create a trackFormat mark.
+ *
+ * Note: SuperDoc's parseFormatList requires all marks in before/after arrays
+ * to have both `type` and `attrs` properties. Marks without `attrs` get filtered out,
+ * causing empty values in track change bubbles. We normalize marks here to ensure
+ * all have at least an empty `attrs` object.
  */
 declare function createTrackFormatMark(before: ProseMirrorMark[], after: ProseMirrorMark[], author?: TrackChangeAuthor): ProseMirrorMark;
 

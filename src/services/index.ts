@@ -22,6 +22,7 @@ export {
   markAllAsDeleted,
   markAllAsInserted,
   cloneNode,
+  normalizeMarksForRendering,
 } from './trackChangeInjector';
 
 export {

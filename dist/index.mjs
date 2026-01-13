@@ -1295,6 +1295,34 @@ function groupReplacements(changes) {
   }
   return result;
 }
+function ensureValidCssColor(color) {
+  if (typeof color !== "string" || !color) {
+    return void 0;
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(color)) {
+    return `#${color}`;
+  }
+  if (/^[0-9a-fA-F]{3}$/.test(color)) {
+    return `#${color}`;
+  }
+  return color;
+}
+function normalizeMark(mark) {
+  const attrs = { ...mark.attrs || {} };
+  if (attrs.color !== void 0) {
+    attrs.color = ensureValidCssColor(attrs.color);
+  }
+  return {
+    type: mark.type,
+    attrs
+  };
+}
+function normalizeMarks(marks) {
+  return marks.map(normalizeMark);
+}
+function normalizeMarksForRendering(marks) {
+  return normalizeMarks(marks);
+}
 function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
   return {
     type: "trackInsert",
@@ -1320,6 +1348,8 @@ function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
   };
 }
 function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
+  const normalizedBefore = normalizeMarks(before);
+  const normalizedAfter = normalizeMarks(after);
   return {
     type: "trackFormat",
     attrs: {
@@ -1328,8 +1358,8 @@ function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
       authorEmail: author.email,
       authorImage: "",
       date: (/* @__PURE__ */ new Date()).toISOString(),
-      before,
-      after
+      before: normalizedBefore,
+      after: normalizedAfter
     }
   };
 }
@@ -1561,7 +1591,8 @@ function createInsertedTextNodes(text, posB, spansB, author, replacementId) {
     }
     if (span.relEnd > span.relStart) {
       const spanText = text.substring(span.relStart, span.relEnd);
-      const marks = [...span.marks, trackMark];
+      const normalizedSpanMarks = normalizeMarksForRendering(span.marks);
+      const marks = [...normalizedSpanMarks, trackMark];
       result.push({
         type: "text",
         text: spanText,
@@ -1669,7 +1700,8 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
               currentFormatChange.after,
               author
             );
-            marks = [...currentFormatChange.after, trackFormatMark];
+            const normalizedAfterMarks = normalizeMarksForRendering(currentFormatChange.after);
+            marks = [...normalizedAfterMarks, trackFormatMark];
           }
         }
         result.push({
@@ -2258,9 +2290,10 @@ function cloneNode2(node) {
 }
 function markAllTextAsInserted(node, sharedId, author) {
   if (node.type === "text") {
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...node.marks || [], createTrackInsertMark(author, sharedId)]
+      marks: [...existingMarks, createTrackInsertMark(author, sharedId)]
     };
   }
   if (node.content && Array.isArray(node.content)) {
@@ -2275,9 +2308,10 @@ function markAllTextAsInserted(node, sharedId, author) {
 }
 function markAllTextAsDeleted(node, sharedId, author) {
   if (node.type === "text") {
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...node.marks || [], createTrackDeleteMark(author, sharedId)]
+      marks: [...existingMarks, createTrackDeleteMark(author, sharedId)]
     };
   }
   if (node.content && Array.isArray(node.content)) {
@@ -3538,9 +3572,10 @@ var DocxDiffEditor_default = DocxDiffEditor;
 init_nodeFingerprint();
 function markAllTextAsInserted2(node, sharedId, author) {
   if (node.type === "text") {
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...node.marks || [], createTrackInsertMark(author, sharedId)]
+      marks: [...existingMarks, createTrackInsertMark(author, sharedId)]
     };
   }
   if (node.content && Array.isArray(node.content)) {
@@ -3555,9 +3590,10 @@ function markAllTextAsInserted2(node, sharedId, author) {
 }
 function markAllTextAsDeleted2(node, sharedId, author) {
   if (node.type === "text") {
+    const existingMarks = normalizeMarksForRendering(node.marks || []);
     return {
       ...node,
-      marks: [...node.marks || [], createTrackDeleteMark(author, sharedId)]
+      marks: [...existingMarks, createTrackDeleteMark(author, sharedId)]
     };
   }
   if (node.content && Array.isArray(node.content)) {

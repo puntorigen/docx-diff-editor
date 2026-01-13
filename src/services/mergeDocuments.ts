@@ -18,6 +18,7 @@ import {
   createTrackInsertMark,
   createTrackDeleteMark,
   createTrackFormatMark,
+  normalizeMarksForRendering,
 } from './trackChangeInjector';
 import { DEFAULT_AUTHOR } from '../constants';
 
@@ -132,9 +133,11 @@ function createInsertedTextNodes(
     }
     
     // Create node with marks from docB plus trackInsert
+    // Normalize marks to ensure valid CSS color format (# prefix for hex colors)
     if (span.relEnd > span.relStart) {
       const spanText = text.substring(span.relStart, span.relEnd);
-      const marks = [...span.marks, trackMark];
+      const normalizedSpanMarks = normalizeMarksForRendering(span.marks);
+      const marks = [...normalizedSpanMarks, trackMark];
       
       result.push({
         type: 'text',
@@ -320,12 +323,15 @@ export function mergeDocuments(
           // Check if there's a format change at this position
           if (currentFormatChange) {
             // For format changes, use the NEW marks (after) plus trackFormat
+            // Note: createTrackFormatMark already normalizes before/after marks
             const trackFormatMark = createTrackFormatMark(
               currentFormatChange.before,
               currentFormatChange.after,
               author
             );
-            marks = [...currentFormatChange.after, trackFormatMark];
+            // Normalize the after marks to ensure valid CSS color format
+            const normalizedAfterMarks = normalizeMarksForRendering(currentFormatChange.after);
+            marks = [...normalizedAfterMarks, trackFormatMark];
           }
         }
 
