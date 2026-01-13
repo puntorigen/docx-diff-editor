@@ -60,6 +60,10 @@ export interface ResolvedContent {
 export interface DiffSegment {
   type: 'equal' | 'insert' | 'delete';
   text: string;
+  /** Position in docA where this segment starts (for equal/delete segments) */
+  posA?: number;
+  /** Position in docB where this segment starts (for equal/insert segments) */
+  posB?: number;
 }
 
 /**
@@ -87,6 +91,8 @@ export interface DiffResult {
   textB: string;
   /** Human-readable summary */
   summary: string[];
+  /** Text spans from docB with marks (for mark preservation during merge) */
+  spansB?: TextSpan[];
 }
 
 // ============================================================================

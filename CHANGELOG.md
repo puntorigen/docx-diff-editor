@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.47] - 2026-01-13
+
+### Fixed
+
+- **Mark preservation in character-level merging**: Inserted text from `compareWith()` now correctly preserves its original styling (colors, bold, italic, etc.) from the source document. Previously, when text was inserted via character-level diffing, it would lose all marks from docB and only inherit marks from docA.
+
+### Technical Details
+
+- **Root cause**: The character-level merge in `mergeDocuments.ts` flattened documents to plain strings for diffing, losing all mark/style information. Inserted text nodes were created with marks from the original document (docA), not the new document (docB).
+- **Solution**: Added position tracking in `diffDocuments()` to track where each segment originated in both documents:
+  - `DiffSegment` now includes `posA` and `posB` fields
+  - `DiffResult` now includes `spansB` (text spans with marks from docB)
+- **Mark lookup**: New helper functions in `mergeDocuments.ts`:
+  - `getMarksFromSpansB()` - get marks at a specific position in docB
+  - `getMarkSpansForRange()` - get all mark spans covering a text range
+  - `createInsertedTextNodes()` - creates text nodes with preserved marks from docB, splitting into multiple nodes when the text spans differently-styled regions
+- This fix works in conjunction with `normalizeRunProperties()` (1.0.46) to ensure marks are reflected in both ProseMirror marks AND SuperDoc's runProperties
+
 ## [1.0.46] - 2026-01-13
 
 ### Added

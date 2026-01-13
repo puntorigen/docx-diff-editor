@@ -1002,14 +1002,20 @@ function diffDocuments(docA, docB) {
   const segments = [];
   let insertCount = 0;
   let deleteCount = 0;
+  let posA = 0;
+  let posB = 0;
   for (const [op, text] of diffs) {
     if (op === DIFF_EQUAL) {
-      segments.push({ type: "equal", text });
+      segments.push({ type: "equal", text, posA, posB });
+      posA += text.length;
+      posB += text.length;
     } else if (op === DIFF_INSERT) {
-      segments.push({ type: "insert", text });
+      segments.push({ type: "insert", text, posB });
+      posB += text.length;
       insertCount++;
     } else if (op === DIFF_DELETE) {
-      segments.push({ type: "delete", text });
+      segments.push({ type: "delete", text, posA });
+      posA += text.length;
       deleteCount++;
     }
   }
@@ -1034,7 +1040,9 @@ function diffDocuments(docA, docB) {
     formatChanges,
     textA,
     textB,
-    summary
+    summary,
+    spansB
+    // Include docB spans for mark preservation during merge
   };
 }
 
@@ -1516,6 +1524,69 @@ function alignListItems(listA, listB, listPathA, listPathB) {
 function cloneNode(node) {
   return JSON.parse(JSON.stringify(node));
 }
+function getMarkSpansForRange(spansB, start, end) {
+  const result = [];
+  for (const span of spansB) {
+    if (span.to > start && span.from < end) {
+      const overlapStart = Math.max(span.from, start);
+      const overlapEnd = Math.min(span.to, end);
+      result.push({
+        relStart: overlapStart - start,
+        relEnd: overlapEnd - start,
+        marks: span.marks || []
+      });
+    }
+  }
+  return result;
+}
+function createInsertedTextNodes(text, posB, spansB, author, replacementId) {
+  const result = [];
+  const trackMark = createTrackInsertMark(author, replacementId);
+  if (posB === void 0 || spansB.length === 0) {
+    return [{
+      type: "text",
+      text,
+      marks: [trackMark]
+    }];
+  }
+  const markSpans = getMarkSpansForRange(spansB, posB, posB + text.length);
+  if (markSpans.length === 0) {
+    return [{
+      type: "text",
+      text,
+      marks: [trackMark]
+    }];
+  }
+  markSpans.sort((a, b) => a.relStart - b.relStart);
+  let processedUpTo = 0;
+  for (const span of markSpans) {
+    if (span.relStart > processedUpTo) {
+      result.push({
+        type: "text",
+        text: text.substring(processedUpTo, span.relStart),
+        marks: [trackMark]
+      });
+    }
+    if (span.relEnd > span.relStart) {
+      const spanText = text.substring(span.relStart, span.relEnd);
+      const marks = [...span.marks, trackMark];
+      result.push({
+        type: "text",
+        text: spanText,
+        marks
+      });
+      processedUpTo = span.relEnd;
+    }
+  }
+  if (processedUpTo < text.length) {
+    result.push({
+      type: "text",
+      text: text.substring(processedUpTo),
+      marks: [trackMark]
+    });
+  }
+  return result;
+}
 function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
   const merged = cloneNode(docA);
   const charStates = [];
@@ -1550,17 +1621,22 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
         insertions.push({
           afterOffset: docAOffset,
           text: nextSegment.text,
-          replacementId
+          replacementId,
+          posB: nextSegment.posB
+          // Capture docB position for mark lookup
         });
         segIdx++;
       }
     } else if (segment.type === "insert") {
       insertions.push({
         afterOffset: docAOffset,
-        text: segment.text
+        text: segment.text,
+        posB: segment.posB
+        // Capture docB position for mark lookup
       });
     }
   }
+  const spansB = diffResult.spansB || [];
   function transformNode(node, nodeOffset, path) {
     if (node.type === "text" && node.text) {
       const text = node.text;
@@ -1571,11 +1647,14 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
         const charState = charStates[charOffset] || { type: "equal" };
         const insertionsHere = insertions.filter((ins) => ins.afterOffset === charOffset);
         for (const ins of insertionsHere) {
-          result.push({
-            type: "text",
-            text: ins.text,
-            marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
-          });
+          const insertedNodes = createInsertedTextNodes(
+            ins.text,
+            ins.posB,
+            spansB,
+            author,
+            ins.replacementId
+          );
+          result.push(...insertedNodes);
         }
         const currentFormatChange = getFormatChangeAt(nodeOffset + i);
         let j = i + 1;
@@ -1611,11 +1690,14 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
       const endOffset = nodeOffset + text.length;
       const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
       for (const ins of endInsertions) {
-        result.push({
-          type: "text",
-          text: ins.text,
-          marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
-        });
+        const insertedNodes = createInsertedTextNodes(
+          ins.text,
+          ins.posB,
+          spansB,
+          author,
+          ins.replacementId
+        );
+        result.push(...insertedNodes);
       }
       insertions = insertions.filter(
         (ins) => ins.afterOffset < nodeOffset || ins.afterOffset > endOffset
@@ -1650,18 +1732,19 @@ function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
   }
   if (insertions.length > 0) {
     for (const ins of insertions) {
+      const insertedNodes = createInsertedTextNodes(
+        ins.text,
+        ins.posB,
+        spansB,
+        author,
+        ins.replacementId
+      );
       const insertNode = {
         type: "paragraph",
         content: [
           {
             type: "run",
-            content: [
-              {
-                type: "text",
-                text: ins.text,
-                marks: [createTrackInsertMark(author, ins.replacementId)]
-              }
-            ]
+            content: insertedNodes
           }
         ]
       };

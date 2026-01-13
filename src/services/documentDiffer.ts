@@ -222,6 +222,10 @@ function detectFormatChanges(
 /**
  * Diff two ProseMirror JSON documents at the character level.
  * Detects both text changes and formatting changes.
+ * 
+ * Now also tracks positions in both documents for mark preservation:
+ * - posA: position in docA (for equal/delete segments)
+ * - posB: position in docB (for equal/insert segments)
  */
 export function diffDocuments(
   docA: ProseMirrorJSON,
@@ -235,19 +239,30 @@ export function diffDocuments(
   const diffs = dmp.diff_main(textA, textB);
   dmp.diff_cleanupSemantic(diffs);
 
-  // Convert to our DiffSegment format
+  // Convert to our DiffSegment format with position tracking
   const segments: DiffSegment[] = [];
   let insertCount = 0;
   let deleteCount = 0;
+  
+  // Track positions in both documents
+  let posA = 0;
+  let posB = 0;
 
   for (const [op, text] of diffs) {
     if (op === DIFF_EQUAL) {
-      segments.push({ type: 'equal', text });
+      // Equal segments exist in both documents
+      segments.push({ type: 'equal', text, posA, posB });
+      posA += text.length;
+      posB += text.length;
     } else if (op === DIFF_INSERT) {
-      segments.push({ type: 'insert', text });
+      // Inserted text exists only in docB
+      segments.push({ type: 'insert', text, posB });
+      posB += text.length;
       insertCount++;
     } else if (op === DIFF_DELETE) {
-      segments.push({ type: 'delete', text });
+      // Deleted text exists only in docA
+      segments.push({ type: 'delete', text, posA });
+      posA += text.length;
       deleteCount++;
     }
   }
@@ -280,6 +295,7 @@ export function diffDocuments(
     textA,
     textB,
     summary,
+    spansB, // Include docB spans for mark preservation during merge
   };
 }
 

@@ -29,6 +29,10 @@ type DocxContent = File | ProseMirrorJSON | string;
 interface DiffSegment {
     type: 'equal' | 'insert' | 'delete';
     text: string;
+    /** Position in docA where this segment starts (for equal/delete segments) */
+    posA?: number;
+    /** Position in docB where this segment starts (for equal/insert segments) */
+    posB?: number;
 }
 /**
  * A format change on unchanged text
@@ -54,6 +58,8 @@ interface DiffResult {
     textB: string;
     /** Human-readable summary */
     summary: string[];
+    /** Text spans from docB with marks (for mark preservation during merge) */
+    spansB?: TextSpan[];
 }
 /**
  * Type of structural change
@@ -365,6 +371,15 @@ interface DocxDiffEditorRef {
     /** Parse HTML string to ProseMirror JSON (uses hidden SuperDoc instance) */
     parseHtml(html: string): Promise<ProseMirrorJSON>;
 }
+/**
+ * Text span with position and marks (used in diffing)
+ */
+interface TextSpan {
+    text: string;
+    from: number;
+    to: number;
+    marks: ProseMirrorMark[];
+}
 
 /**
  * DocxDiffEditor Component
@@ -454,6 +469,10 @@ declare function parseDocxFile(file: File, SuperDoc: SuperDocConstructor): Promi
 /**
  * Diff two ProseMirror JSON documents at the character level.
  * Detects both text changes and formatting changes.
+ *
+ * Now also tracks positions in both documents for mark preservation:
+ * - posA: position in docA (for equal/delete segments)
+ * - posB: position in docB (for equal/insert segments)
  */
 declare function diffDocuments(docA: ProseMirrorJSON, docB: ProseMirrorJSON): DiffResult;
 

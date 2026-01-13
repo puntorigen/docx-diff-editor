@@ -8,9 +8,11 @@ import { v4 as uuidv4 } from 'uuid';
 import type {
   ProseMirrorJSON,
   ProseMirrorNode,
+  ProseMirrorMark,
   DiffResult,
   FormatChange,
   TrackChangeAuthor,
+  TextSpan,
 } from '../types';
 import {
   createTrackInsertMark,
@@ -24,6 +26,135 @@ import { DEFAULT_AUTHOR } from '../constants';
  */
 function cloneNode(node: ProseMirrorNode): ProseMirrorNode {
   return JSON.parse(JSON.stringify(node));
+}
+
+/**
+ * Get marks from docB spans at a specific character position.
+ * Used to preserve styling from the source document for inserted text.
+ */
+function getMarksFromSpansB(spansB: TextSpan[], position: number): ProseMirrorMark[] {
+  for (const span of spansB) {
+    if (position >= span.from && position < span.to) {
+      return span.marks || [];
+    }
+  }
+  return [];
+}
+
+/**
+ * Get mark spans that cover a range of text in docB.
+ * Used when inserted text spans multiple differently-styled regions.
+ */
+function getMarkSpansForRange(
+  spansB: TextSpan[],
+  start: number,
+  end: number
+): { relStart: number; relEnd: number; marks: ProseMirrorMark[] }[] {
+  const result: { relStart: number; relEnd: number; marks: ProseMirrorMark[] }[] = [];
+  
+  for (const span of spansB) {
+    // Check if span overlaps with our range
+    if (span.to > start && span.from < end) {
+      // Calculate relative positions within the insertion range
+      const overlapStart = Math.max(span.from, start);
+      const overlapEnd = Math.min(span.to, end);
+      
+      result.push({
+        relStart: overlapStart - start,
+        relEnd: overlapEnd - start,
+        marks: span.marks || [],
+      });
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Create text nodes for inserted text, preserving marks from docB.
+ * 
+ * If the inserted text spans multiple mark regions in docB, this will
+ * create multiple text nodes, each with the appropriate marks from docB
+ * plus the trackInsert mark.
+ * 
+ * @param text - The inserted text content
+ * @param posB - Position in docB where this text originated (undefined if unknown)
+ * @param spansB - Text spans from docB with mark information
+ * @param author - Author for track change marks
+ * @param replacementId - Optional shared ID for replacement operations
+ * @returns Array of text nodes with preserved marks
+ */
+function createInsertedTextNodes(
+  text: string,
+  posB: number | undefined,
+  spansB: TextSpan[],
+  author: TrackChangeAuthor,
+  replacementId?: string
+): ProseMirrorNode[] {
+  const result: ProseMirrorNode[] = [];
+  const trackMark = createTrackInsertMark(author, replacementId);
+  
+  // If we don't have position info or spans, create a simple node with just trackInsert
+  if (posB === undefined || spansB.length === 0) {
+    return [{
+      type: 'text',
+      text,
+      marks: [trackMark],
+    }];
+  }
+  
+  // Get all mark spans that cover this inserted text range
+  const markSpans = getMarkSpansForRange(spansB, posB, posB + text.length);
+  
+  // If no spans found, create simple node
+  if (markSpans.length === 0) {
+    return [{
+      type: 'text',
+      text,
+      marks: [trackMark],
+    }];
+  }
+  
+  // Sort spans by start position
+  markSpans.sort((a, b) => a.relStart - b.relStart);
+  
+  // Track how much text we've processed
+  let processedUpTo = 0;
+  
+  for (const span of markSpans) {
+    // If there's a gap before this span, create a node without marks
+    if (span.relStart > processedUpTo) {
+      result.push({
+        type: 'text',
+        text: text.substring(processedUpTo, span.relStart),
+        marks: [trackMark],
+      });
+    }
+    
+    // Create node with marks from docB plus trackInsert
+    if (span.relEnd > span.relStart) {
+      const spanText = text.substring(span.relStart, span.relEnd);
+      const marks = [...span.marks, trackMark];
+      
+      result.push({
+        type: 'text',
+        text: spanText,
+        marks,
+      });
+      processedUpTo = span.relEnd;
+    }
+  }
+  
+  // Handle any remaining text after the last span
+  if (processedUpTo < text.length) {
+    result.push({
+      type: 'text',
+      text: text.substring(processedUpTo),
+      marks: [trackMark],
+    });
+  }
+  
+  return result;
 }
 
 /**
@@ -44,6 +175,8 @@ interface Insertion {
   text: string;
   /** Shared ID for replacement operations (delete + insert at same position) */
   replacementId?: string;
+  /** Position in docB where this inserted text originated (for mark lookup) */
+  posB?: number;
 }
 
 /**
@@ -113,6 +246,7 @@ export function mergeDocuments(
           afterOffset: docAOffset,
           text: nextSegment.text,
           replacementId,
+          posB: nextSegment.posB, // Capture docB position for mark lookup
         });
         segIdx++; // Skip the next segment since we processed it here
       }
@@ -121,9 +255,13 @@ export function mergeDocuments(
       insertions.push({
         afterOffset: docAOffset,
         text: segment.text,
+        posB: segment.posB, // Capture docB position for mark lookup
       });
     }
   }
+
+  // Get docB spans for mark preservation (if available)
+  const spansB = diffResult.spansB || [];
 
   // Now we need to transform the document
   // For each text span in the original:
@@ -148,11 +286,15 @@ export function mergeDocuments(
         // Check for insertions at this position
         const insertionsHere = insertions.filter((ins) => ins.afterOffset === charOffset);
         for (const ins of insertionsHere) {
-          result.push({
-            type: 'text',
-            text: ins.text,
-            marks: [...(node.marks || []), createTrackInsertMark(author, ins.replacementId)],
-          });
+          // Create inserted text nodes, preserving marks from docB
+          const insertedNodes = createInsertedTextNodes(
+            ins.text,
+            ins.posB,
+            spansB,
+            author,
+            ins.replacementId
+          );
+          result.push(...insertedNodes);
         }
 
         // Find run of same state AND same format change status
@@ -200,11 +342,15 @@ export function mergeDocuments(
         const endOffset = nodeOffset + text.length;
         const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
         for (const ins of endInsertions) {
-          result.push({
-            type: 'text',
-            text: ins.text,
-            marks: [...(node.marks || []), createTrackInsertMark(author, ins.replacementId)],
-          });
+          // Create inserted text nodes, preserving marks from docB
+          const insertedNodes = createInsertedTextNodes(
+            ins.text,
+            ins.posB,
+            spansB,
+            author,
+            ins.replacementId
+          );
+          result.push(...insertedNodes);
         }
 
       // Remove processed insertions
@@ -254,18 +400,21 @@ export function mergeDocuments(
   // Handle any remaining insertions (at the very end)
   if (insertions.length > 0) {
     for (const ins of insertions) {
+      // Create text nodes with preserved marks from docB
+      const insertedNodes = createInsertedTextNodes(
+        ins.text,
+        ins.posB,
+        spansB,
+        author,
+        ins.replacementId
+      );
+      
       const insertNode = {
         type: 'paragraph',
         content: [
           {
             type: 'run',
-            content: [
-              {
-                type: 'text',
-                text: ins.text,
-                marks: [createTrackInsertMark(author, ins.replacementId)],
-              },
-            ],
+            content: insertedNodes,
           },
         ],
       };
