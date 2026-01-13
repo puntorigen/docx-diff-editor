@@ -6,36 +6,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { TrackChangeAuthor, ProseMirrorJSON, ProseMirrorMark } from '../types';
 import { DEFAULT_AUTHOR } from '../constants';
-
-/**
- * Ensure a color value is valid CSS (has # prefix for hex colors).
- * SuperDoc's Color extension renderDOM uses the color value directly in CSS,
- * so hex colors MUST have # prefix to be valid.
- * 
- * Examples:
- * - "ff0000" → "#ff0000"
- * - "#ff0000" → "#ff0000" (unchanged)
- * - "red" → "red" (named colors unchanged)
- * - "rgb(255,0,0)" → "rgb(255,0,0)" (rgb unchanged)
- */
-function ensureValidCssColor(color: unknown): string | undefined {
-  if (typeof color !== 'string' || !color) {
-    return undefined;
-  }
-  
-  // If it's a 6-character hex without #, add the #
-  if (/^[0-9a-fA-F]{6}$/.test(color)) {
-    return `#${color}`;
-  }
-  
-  // If it's a 3-character hex without #, add the #
-  if (/^[0-9a-fA-F]{3}$/.test(color)) {
-    return `#${color}`;
-  }
-  
-  // Already has # or is a named color/rgb/etc - return as-is
-  return color;
-}
+import { ensureValidCssColor } from './colorUtils';
 
 /**
  * Normalize a mark to ensure it has an `attrs` property and valid color format.

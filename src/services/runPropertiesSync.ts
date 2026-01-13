@@ -14,6 +14,8 @@
  */
 
 import type { ProseMirrorJSON, ProseMirrorNode } from '../types';
+import { normalizeMarksForRendering } from './trackChangeInjector';
+import { colorToHexWithoutHash } from './colorUtils';
 
 // ============================================================================
 // Types
@@ -75,14 +77,6 @@ const PT_TO_TWIPS = 20;
  */
 function ptToTwips(ptValue: number): number {
   return Math.round(ptValue * PT_TO_TWIPS);
-}
-
-/**
- * Strip # from hex color if present.
- * Example: "#ff0000" → "ff0000"
- */
-function stripHashFromColor(color: string): string {
-  return color.replace(/^#/, '');
 }
 
 /**
@@ -163,7 +157,7 @@ export function marksToRunProperties(marks: ProseMirrorMark[]): RunProperties {
         }
         
         if (attrs.underlineColor) {
-          underlineAttrs['w:color'] = stripHashFromColor(String(attrs.underlineColor));
+          underlineAttrs['w:color'] = colorToHexWithoutHash(String(attrs.underlineColor));
         }
         
         if (Object.keys(underlineAttrs).length > 0) {
@@ -187,10 +181,10 @@ export function marksToRunProperties(marks: ProseMirrorMark[]): RunProperties {
 
       // textStyle contains multiple style attributes
       case 'textStyle': {
-        // Color
+        // Color - convert named colors to hex for SuperDoc compatibility
         if (attrs.color != null) {
           runProperties.color = {
-            val: stripHashFromColor(String(attrs.color)),
+            val: colorToHexWithoutHash(String(attrs.color)),
           };
         }
 
@@ -283,12 +277,30 @@ function collectMarksFromRunChildren(runNode: ProseMirrorNode): ProseMirrorMark[
 }
 
 /**
- * Recursively walk a node and normalize runProperties on run nodes.
+ * Recursively walk a node and:
+ * 1. Normalize runProperties on run nodes from child text marks
+ * 2. Normalize marks on text nodes to ensure valid CSS colors
+ * 
+ * This ensures both the ProseMirror marks AND runProperties have valid values.
  */
 function normalizeNode(node: ProseMirrorNode): ProseMirrorNode {
+  // If this is a text node with marks, normalize the marks
+  if (node.type === 'text' && node.marks && Array.isArray(node.marks)) {
+    const normalizedMarks = normalizeMarksForRendering(node.marks);
+    return {
+      ...node,
+      marks: normalizedMarks,
+    };
+  }
+  
   // If this is a run node, sync runProperties from child text marks
   if (node.type === 'run') {
-    const marks = collectMarksFromRunChildren(node);
+    // First, recursively normalize children (including text node marks)
+    const normalizedContent = node.content?.map(normalizeNode);
+    
+    // Then collect marks from the normalized children
+    const normalizedNode = { ...node, content: normalizedContent };
+    const marks = collectMarksFromRunChildren(normalizedNode);
     
     if (marks.length > 0) {
       const runPropsFromMarks = marksToRunProperties(marks);
@@ -302,15 +314,15 @@ function normalizeNode(node: ProseMirrorNode): ProseMirrorNode {
 
       // Return node with updated runProperties
       return {
-        ...node,
+        ...normalizedNode,
         attrs: {
-          ...node.attrs,
+          ...normalizedNode.attrs,
           runProperties: mergedRunProps,
         },
-        // Also recursively process children (though runs usually just have text)
-        content: node.content?.map(normalizeNode),
       };
     }
+    
+    return normalizedNode;
   }
 
   // Recursively process children
@@ -325,11 +337,13 @@ function normalizeNode(node: ProseMirrorNode): ProseMirrorNode {
 }
 
 /**
- * Normalize a ProseMirror document by syncing runProperties on run nodes
- * from child text node marks.
+ * Normalize a ProseMirror document by:
+ * 1. Normalizing marks on text nodes (ensuring valid CSS colors, attrs property)
+ * 2. Syncing runProperties on run nodes from child text node marks
  * 
- * This ensures that styles set via marks (from HTML parsing, etc.) are
- * properly reflected in runProperties for DOCX rendering.
+ * This ensures that styles set via marks (from HTML parsing, etc.) are:
+ * - Properly formatted for SuperDoc's DOM rendering (valid CSS colors with #)
+ * - Properly reflected in runProperties for DOCX export
  * 
  * This function is idempotent - running it multiple times produces the same result.
  */

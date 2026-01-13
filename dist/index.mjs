@@ -1,7 +1,7 @@
 import { forwardRef, useRef, useState, useEffect, useCallback, useImperativeHandle } from 'react';
 import { jsxs, jsx, Fragment } from 'react/jsx-runtime';
-import DiffMatchPatch from 'diff-match-patch';
 import { v4 } from 'uuid';
+import DiffMatchPatch from 'diff-match-patch';
 
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
@@ -445,13 +445,155 @@ var TIMEOUTS = {
   CLEANUP_DELAY: 100
 };
 
+// src/services/colorUtils.ts
+var CSS_NAMED_COLORS = {
+  // Basic colors
+  black: "000000",
+  white: "ffffff",
+  red: "ff0000",
+  green: "008000",
+  blue: "0000ff",
+  yellow: "ffff00",
+  cyan: "00ffff",
+  magenta: "ff00ff",
+  // Extended colors
+  orange: "ffa500",
+  pink: "ffc0cb",
+  purple: "800080",
+  violet: "ee82ee",
+  brown: "a52a2a",
+  gray: "808080",
+  grey: "808080",
+  // Light variants
+  lightblue: "add8e6",
+  lightgreen: "90ee90",
+  lightgray: "d3d3d3",
+  lightgrey: "d3d3d3",
+  lightpink: "ffb6c1",
+  lightyellow: "ffffe0",
+  // Dark variants
+  darkblue: "00008b",
+  darkgreen: "006400",
+  darkgray: "a9a9a9",
+  darkgrey: "a9a9a9",
+  darkred: "8b0000",
+  // Other common colors
+  navy: "000080",
+  teal: "008080",
+  maroon: "800000",
+  olive: "808000",
+  silver: "c0c0c0",
+  aqua: "00ffff",
+  fuchsia: "ff00ff",
+  lime: "00ff00",
+  coral: "ff7f50",
+  salmon: "fa8072",
+  gold: "ffd700",
+  indigo: "4b0082",
+  crimson: "dc143c",
+  tomato: "ff6347",
+  chocolate: "d2691e",
+  tan: "d2b48c",
+  beige: "f5f5dc",
+  ivory: "fffff0",
+  khaki: "f0e68c",
+  lavender: "e6e6fa",
+  plum: "dda0dd",
+  orchid: "da70d6",
+  turquoise: "40e0d0",
+  skyblue: "87ceeb",
+  steelblue: "4682b4",
+  slategray: "708090",
+  slategrey: "708090"
+};
+function colorToHexWithoutHash(color) {
+  const trimmed = color.trim();
+  const lowerColor = trimmed.toLowerCase();
+  if (CSS_NAMED_COLORS[lowerColor]) {
+    return CSS_NAMED_COLORS[lowerColor];
+  }
+  return trimmed.replace(/^#/, "");
+}
+function ensureValidCssColor(color) {
+  if (typeof color !== "string" || !color) {
+    return void 0;
+  }
+  const trimmed = color.trim();
+  const lowerColor = trimmed.toLowerCase();
+  if (CSS_NAMED_COLORS[lowerColor]) {
+    return `#${CSS_NAMED_COLORS[lowerColor]}`;
+  }
+  if (/^[0-9a-fA-F]{6}$/.test(trimmed)) {
+    return `#${trimmed}`;
+  }
+  if (/^[0-9a-fA-F]{3}$/.test(trimmed)) {
+    return `#${trimmed}`;
+  }
+  return trimmed;
+}
+
+// src/services/trackChangeInjector.ts
+function normalizeMark(mark) {
+  const attrs = { ...mark.attrs || {} };
+  if (attrs.color !== void 0) {
+    attrs.color = ensureValidCssColor(attrs.color);
+  }
+  return {
+    type: mark.type,
+    attrs
+  };
+}
+function normalizeMarks(marks) {
+  return marks.map(normalizeMark);
+}
+function normalizeMarksForRendering(marks) {
+  return normalizeMarks(marks);
+}
+function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
+  return {
+    type: "trackInsert",
+    attrs: {
+      id: id ?? v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
+  return {
+    type: "trackDelete",
+    attrs: {
+      id: id ?? v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
+  const normalizedBefore = normalizeMarks(before);
+  const normalizedAfter = normalizeMarks(after);
+  return {
+    type: "trackFormat",
+    attrs: {
+      id: v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString(),
+      before: normalizedBefore,
+      after: normalizedAfter
+    }
+  };
+}
+
 // src/services/runPropertiesSync.ts
 var PT_TO_TWIPS = 20;
 function ptToTwips(ptValue) {
   return Math.round(ptValue * PT_TO_TWIPS);
-}
-function stripHashFromColor(color) {
-  return color.replace(/^#/, "");
 }
 function parseFontSizeToPoints(fontSize) {
   if (typeof fontSize === "number") {
@@ -495,7 +637,7 @@ function marksToRunProperties(marks) {
           underlineAttrs["w:val"] = "single";
         }
         if (attrs.underlineColor) {
-          underlineAttrs["w:color"] = stripHashFromColor(String(attrs.underlineColor));
+          underlineAttrs["w:color"] = colorToHexWithoutHash(String(attrs.underlineColor));
         }
         if (Object.keys(underlineAttrs).length > 0) {
           runProperties.underline = underlineAttrs;
@@ -518,7 +660,7 @@ function marksToRunProperties(marks) {
       case "textStyle": {
         if (attrs.color != null) {
           runProperties.color = {
-            val: stripHashFromColor(String(attrs.color))
+            val: colorToHexWithoutHash(String(attrs.color))
           };
         }
         if (attrs.fontSize != null) {
@@ -576,8 +718,17 @@ function collectMarksFromRunChildren(runNode) {
   return Array.from(marksByType.values());
 }
 function normalizeNode(node) {
+  if (node.type === "text" && node.marks && Array.isArray(node.marks)) {
+    const normalizedMarks = normalizeMarksForRendering(node.marks);
+    return {
+      ...node,
+      marks: normalizedMarks
+    };
+  }
   if (node.type === "run") {
-    const marks = collectMarksFromRunChildren(node);
+    const normalizedContent = node.content?.map(normalizeNode);
+    const normalizedNode = { ...node, content: normalizedContent };
+    const marks = collectMarksFromRunChildren(normalizedNode);
     if (marks.length > 0) {
       const runPropsFromMarks = marksToRunProperties(marks);
       const existingRunProps = node.attrs?.runProperties || {};
@@ -586,15 +737,14 @@ function normalizeNode(node) {
         ...runPropsFromMarks
       };
       return {
-        ...node,
+        ...normalizedNode,
         attrs: {
-          ...node.attrs,
+          ...normalizedNode.attrs,
           runProperties: mergedRunProps
-        },
-        // Also recursively process children (though runs usually just have text)
-        content: node.content?.map(normalizeNode)
+        }
       };
     }
+    return normalizedNode;
   }
   if (node.content && Array.isArray(node.content)) {
     return {
@@ -1294,74 +1444,6 @@ function groupReplacements(changes) {
     }
   }
   return result;
-}
-function ensureValidCssColor(color) {
-  if (typeof color !== "string" || !color) {
-    return void 0;
-  }
-  if (/^[0-9a-fA-F]{6}$/.test(color)) {
-    return `#${color}`;
-  }
-  if (/^[0-9a-fA-F]{3}$/.test(color)) {
-    return `#${color}`;
-  }
-  return color;
-}
-function normalizeMark(mark) {
-  const attrs = { ...mark.attrs || {} };
-  if (attrs.color !== void 0) {
-    attrs.color = ensureValidCssColor(attrs.color);
-  }
-  return {
-    type: mark.type,
-    attrs
-  };
-}
-function normalizeMarks(marks) {
-  return marks.map(normalizeMark);
-}
-function normalizeMarksForRendering(marks) {
-  return normalizeMarks(marks);
-}
-function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
-  return {
-    type: "trackInsert",
-    attrs: {
-      id: id ?? v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  };
-}
-function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
-  return {
-    type: "trackDelete",
-    attrs: {
-      id: id ?? v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  };
-}
-function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
-  const normalizedBefore = normalizeMarks(before);
-  const normalizedAfter = normalizeMarks(after);
-  return {
-    type: "trackFormat",
-    attrs: {
-      id: v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString(),
-      before: normalizedBefore,
-      after: normalizedAfter
-    }
-  };
 }
 
 // src/services/nodeAligner.ts

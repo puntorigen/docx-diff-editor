@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.51] - 2026-01-13
+
+### Fixed
+
+- **Text node marks now normalized during `normalizeRunProperties()`**: When a document is processed through `normalizeRunProperties()`, the marks on text nodes are also normalized (ensuring `attrs` exists and colors are valid CSS hex). This closes a gap where marks could have invalid formats even after normalization.
+
+### Changed
+
+- **Refactored color utilities to single source of truth**: The CSS named colors map was duplicated between `trackChangeInjector.ts` and `runPropertiesSync.ts`. Created new `colorUtils.ts` with shared color conversion functions:
+  - `CSS_NAMED_COLORS` - single map of 60+ named colors to hex values
+  - `colorToHexWithoutHash()` - for DOCX runProperties (e.g., `"red"` → `"ff0000"`)
+  - `ensureValidCssColor()` - for CSS/marks (e.g., `"red"` → `"#ff0000"`)
+  - `isNamedColor()` - check if a color is a recognized named color
+
+### Technical Details
+
+- `normalizeRunProperties()` now calls `normalizeMarksForRendering()` on text node marks
+- This ensures that after `parseHtml()` or any document processing, both:
+  - `runProperties.color.val` = hex without `#` (e.g., `"ff0000"`) for DOCX
+  - `textStyle.attrs.color` = valid CSS color with `#` (e.g., `"#ff0000"`) for DOM rendering
+- The normalization is recursive, handling nested text nodes within runs
+- Bundle size reduced by ~1KB due to deduplication
+
+## [1.0.49] - 2026-01-13
+
+### Fixed
+
+- **Named CSS colors now render correctly**: Colors specified as named values (e.g., "red", "blue", "green") are now converted to hex format for proper SuperDoc rendering. Previously, named colors were passed through unchanged, but SuperDoc's internal color handling (`resolveColorFromAttributes`) requires hex values.
+
+### Technical Details
+
+- Added `CSS_NAMED_COLORS` map with 60+ common CSS color names and their hex equivalents
+- `ensureValidCssColor()` now converts named colors: `"red"` → `"#ff0000"`
+- `colorToHexWithoutHash()` in `runPropertiesSync.ts` converts for runProperties: `"red"` → `"ff0000"`
+- Both the mark's `attrs.color` (for DOM rendering) and `runProperties.color.val` (for DOCX) are now consistently hex
+
 ## [1.0.48] - 2026-01-13
 
 ### Fixed
