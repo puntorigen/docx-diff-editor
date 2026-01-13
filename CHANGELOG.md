@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.46] - 2026-01-13
+
+### Added
+
+- **Run properties sync**: New `normalizeRunProperties()` function that syncs ProseMirror marks on text nodes to `runProperties` on parent `run` nodes. This is required because SuperDoc uses a dual-layer architecture:
+  - ProseMirror marks → used for editing interactions (toolbar, cursor)
+  - runProperties → used for actual DOCX rendering
+
+### Fixed
+
+- **Text styling now renders correctly**: When HTML with inline styles is parsed, the styles now render visually in the editor. Previously, marks were set on text nodes but the parent run's `runProperties` weren't updated, causing styles to not display.
+
+### Technical Details
+
+- New service: `services/runPropertiesSync.ts` with:
+  - `marksToRunProperties(marks)` - converts ProseMirror marks to SuperDoc runProperties format
+  - `normalizeRunProperties(doc)` - walks a document and syncs all run nodes
+- Integration in `parseHtmlToJson()` - normalizes the JSON before returning
+- Integration in `compareWith()` - normalizes the "new" document before comparison (safety net)
+- Based on SuperDoc's `decodeRPrFromMarks` logic in converter-BavE2jnW.js
+- Handles: bold, italic, strike, underline, highlight, textStyle (color, fontSize, fontFamily, letterSpacing, textTransform)
+- Format conversions: strips `#` from colors, converts fontSize to half-points, fontFamily gets 4 properties (ascii, eastAsia, hAnsi, cs)
+
 ## [1.0.45] - 2026-01-13
 
 ### Fixed

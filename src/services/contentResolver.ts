@@ -10,6 +10,7 @@
 
 import type { DocxContent, ProseMirrorJSON } from '../types';
 import { TIMEOUTS } from '../constants';
+import { normalizeRunProperties } from './runPropertiesSync';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type SuperDocConstructor = any;
@@ -146,7 +147,9 @@ export async function parseHtmlToJson(
             const json = editor.getJSON();
             // Verify we got content (paste succeeded)
             if (json?.content?.length > 0) {
-              onSuccess(json);
+              // Normalize runProperties to ensure styles render correctly
+              const normalizedJson = normalizeRunProperties(json);
+              onSuccess(normalizedJson);
             } else {
               // Paste produced empty doc, fall back
               onFail();
@@ -191,9 +194,11 @@ export async function parseHtmlToJson(
               throw new Error('No active editor found');
             }
             const json = editor.getJSON();
+            // Normalize runProperties to ensure styles render correctly
+            const normalizedJson = normalizeRunProperties(json);
             resolved = true;
             cleanup();
-            resolve(json);
+            resolve(normalizedJson);
           } catch (err) {
             resolved = true;
             cleanup();

@@ -38,6 +38,7 @@ import { mergeDocuments } from './services/mergeDocuments';
 import { extractEnrichedChanges } from './services/changeContextExtractor';
 import { processStructuralChanges, generateStructuralChangeSummary } from './services/blockLevelMerger';
 import { mergeWithStructuralAwareness } from './services/structuralMerger';
+import { normalizeRunProperties } from './services/runPropertiesSync';
 import { DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, TRACK_CHANGE_PERMISSIONS, TIMEOUTS } from './constants';
 
 /**
@@ -679,10 +680,15 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             // 3. Applies character-level diff within matched blocks
             // =========================================================
             
+            // Normalize runProperties on the new document to ensure
+            // styles from marks are synced to runProperties for rendering.
+            // This is a safety net for content that didn't come through parseHtml.
+            const normalizedNewJson = normalizeRunProperties(newJson);
+            
             // Use structural merger for the main merge
             const structuralResult = mergeWithStructuralAwareness(
               sourceJson,
-              newJson,
+              normalizedNewJson,
               author
             );
             

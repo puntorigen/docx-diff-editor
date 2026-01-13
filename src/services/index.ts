@@ -112,3 +112,6 @@ export type { BlockMergeResult } from './blockLevelMerger';
 export { mergeWithStructuralAwareness } from './structuralMerger';
 
 export type { StructuralMergeResult } from './structuralMerger';
+
+// Run properties sync (ensures marks are synced to runProperties for rendering)
+export { marksToRunProperties, normalizeRunProperties } from './runPropertiesSync';

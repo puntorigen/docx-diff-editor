@@ -445,6 +445,170 @@ var TIMEOUTS = {
   CLEANUP_DELAY: 100
 };
 
+// src/services/runPropertiesSync.ts
+var PT_TO_TWIPS = 20;
+function ptToTwips(ptValue) {
+  return Math.round(ptValue * PT_TO_TWIPS);
+}
+function stripHashFromColor(color) {
+  return color.replace(/^#/, "");
+}
+function parseFontSizeToPoints(fontSize) {
+  if (typeof fontSize === "number") {
+    return fontSize;
+  }
+  const value = parseFloat(fontSize);
+  if (isNaN(value)) {
+    return null;
+  }
+  if (fontSize.toLowerCase().includes("px")) {
+    return value * 0.75;
+  }
+  return value;
+}
+function cleanFontFamily(fontFamily) {
+  return fontFamily.split(",")[0].trim().replace(/^["']|["']$/g, "");
+}
+function marksToRunProperties(marks) {
+  const runProperties = {};
+  if (!marks || !Array.isArray(marks)) {
+    return runProperties;
+  }
+  for (const mark of marks) {
+    const type = mark.type;
+    const attrs = mark.attrs || {};
+    switch (type) {
+      // Boolean marks: bold, italic, strike
+      case "bold":
+      case "italic":
+      case "strike": {
+        const isNegated = attrs.value === "0" || attrs.value === false;
+        runProperties[type] = !isNegated;
+        break;
+      }
+      // Underline with optional type and color
+      case "underline": {
+        const underlineAttrs = {};
+        if (attrs.underlineType) {
+          underlineAttrs["w:val"] = String(attrs.underlineType);
+        } else {
+          underlineAttrs["w:val"] = "single";
+        }
+        if (attrs.underlineColor) {
+          underlineAttrs["w:color"] = stripHashFromColor(String(attrs.underlineColor));
+        }
+        if (Object.keys(underlineAttrs).length > 0) {
+          runProperties.underline = underlineAttrs;
+        }
+        break;
+      }
+      // Highlight (background color)
+      case "highlight": {
+        if (attrs.color) {
+          const color = String(attrs.color).toLowerCase();
+          if (color === "transparent") {
+            runProperties.highlight = { "w:val": "none" };
+          } else {
+            runProperties.highlight = { "w:val": color };
+          }
+        }
+        break;
+      }
+      // textStyle contains multiple style attributes
+      case "textStyle": {
+        if (attrs.color != null) {
+          runProperties.color = {
+            val: stripHashFromColor(String(attrs.color))
+          };
+        }
+        if (attrs.fontSize != null) {
+          const points = parseFontSizeToPoints(attrs.fontSize);
+          if (points !== null) {
+            runProperties.fontSize = points * 2;
+          }
+        }
+        if (attrs.fontFamily != null) {
+          const cleanedFont = cleanFontFamily(String(attrs.fontFamily));
+          runProperties.fontFamily = {
+            ascii: cleanedFont,
+            eastAsia: cleanedFont,
+            hAnsi: cleanedFont,
+            cs: cleanedFont
+          };
+        }
+        if (attrs.letterSpacing != null) {
+          const ptValue = parseFloat(String(attrs.letterSpacing));
+          if (!isNaN(ptValue)) {
+            runProperties.letterSpacing = ptToTwips(ptValue);
+          }
+        }
+        if (attrs.textTransform != null) {
+          runProperties.textTransform = String(attrs.textTransform);
+        }
+        break;
+      }
+    }
+  }
+  return runProperties;
+}
+function collectMarksRecursively(node, allMarks) {
+  if (node.type === "text" && node.marks && Array.isArray(node.marks)) {
+    allMarks.push(...node.marks);
+  }
+  if (node.content && Array.isArray(node.content)) {
+    for (const child of node.content) {
+      collectMarksRecursively(child, allMarks);
+    }
+  }
+}
+function collectMarksFromRunChildren(runNode) {
+  const allMarks = [];
+  if (!runNode.content || !Array.isArray(runNode.content)) {
+    return allMarks;
+  }
+  for (const child of runNode.content) {
+    collectMarksRecursively(child, allMarks);
+  }
+  const marksByType = /* @__PURE__ */ new Map();
+  for (const mark of allMarks) {
+    marksByType.set(mark.type, mark);
+  }
+  return Array.from(marksByType.values());
+}
+function normalizeNode(node) {
+  if (node.type === "run") {
+    const marks = collectMarksFromRunChildren(node);
+    if (marks.length > 0) {
+      const runPropsFromMarks = marksToRunProperties(marks);
+      const existingRunProps = node.attrs?.runProperties || {};
+      const mergedRunProps = {
+        ...existingRunProps,
+        ...runPropsFromMarks
+      };
+      return {
+        ...node,
+        attrs: {
+          ...node.attrs,
+          runProperties: mergedRunProps
+        },
+        // Also recursively process children (though runs usually just have text)
+        content: node.content?.map(normalizeNode)
+      };
+    }
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map(normalizeNode)
+    };
+  }
+  return node;
+}
+function normalizeRunProperties(doc) {
+  const cloned = JSON.parse(JSON.stringify(doc));
+  return normalizeNode(cloned);
+}
+
 // src/services/contentResolver.ts
 function detectContentType(content) {
   if (content instanceof File) {
@@ -511,7 +675,8 @@ async function parseHtmlToJson(html, SuperDoc) {
           try {
             const json = editor.getJSON();
             if (json?.content?.length > 0) {
-              onSuccess(json);
+              const normalizedJson = normalizeRunProperties(json);
+              onSuccess(normalizedJson);
             } else {
               onFail();
             }
@@ -548,9 +713,10 @@ async function parseHtmlToJson(html, SuperDoc) {
               throw new Error("No active editor found");
             }
             const json = editor.getJSON();
+            const normalizedJson = normalizeRunProperties(json);
             resolved = true;
             cleanup();
-            resolve(json);
+            resolve(normalizedJson);
           } catch (err) {
             resolved = true;
             cleanup();
@@ -2853,9 +3019,10 @@ var DocxDiffEditor = forwardRef(
               }
               newJson = content;
             }
+            const normalizedNewJson = normalizeRunProperties(newJson);
             const structuralResult = mergeWithStructuralAwareness(
               sourceJson,
-              newJson,
+              normalizedNewJson,
               author
             );
             const merged = structuralResult.mergedDoc;
