@@ -490,6 +490,89 @@ async function parseHtmlToJson(html, SuperDoc) {
         }
       }, TIMEOUTS.CLEANUP_DELAY);
     };
+    const createMockPasteEvent = (htmlContent) => {
+      const dataTransfer = new DataTransfer();
+      dataTransfer.setData("text/html", htmlContent);
+      dataTransfer.setData("text/plain", "");
+      const event = new ClipboardEvent("paste", {
+        bubbles: true,
+        cancelable: true,
+        clipboardData: dataTransfer
+      });
+      return event;
+    };
+    const tryPasteApproach = (sd, onSuccess, onFail) => {
+      try {
+        const editor = sd?.activeEditor;
+        if (!editor?.view?.pasteHTML) {
+          onFail();
+          return;
+        }
+        editor.commands.focus?.();
+        if (editor.commands.selectAll && editor.commands.deleteSelection) {
+          editor.commands.selectAll();
+          editor.commands.deleteSelection();
+        }
+        const mockEvent = createMockPasteEvent(html);
+        editor.view.pasteHTML(html, mockEvent);
+        setTimeout(() => {
+          try {
+            const json = editor.getJSON();
+            if (json?.content?.length > 0) {
+              onSuccess(json);
+            } else {
+              onFail();
+            }
+          } catch {
+            onFail();
+          }
+        }, 100);
+      } catch (err) {
+        console.warn("[parseHtmlToJson] Paste approach error:", err);
+        onFail();
+      }
+    };
+    const fallbackToImport = () => {
+      if (superdoc) {
+        try {
+          superdoc.destroy?.();
+        } catch {
+        }
+        superdoc = null;
+      }
+      superdoc = new SuperDoc({
+        selector: container,
+        html,
+        // Use the actual HTML content
+        documentMode: "viewing",
+        rulers: false,
+        user: { name: "Parser", email: "parser@local" },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onReady: ({ superdoc: sd }) => {
+          if (resolved) return;
+          try {
+            const editor = sd?.activeEditor;
+            if (!editor) {
+              throw new Error("No active editor found");
+            }
+            const json = editor.getJSON();
+            resolved = true;
+            cleanup();
+            resolve(json);
+          } catch (err) {
+            resolved = true;
+            cleanup();
+            reject(err);
+          }
+        },
+        onException: ({ error: err }) => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          reject(err);
+        }
+      });
+    };
     setTimeout(async () => {
       if (resolved) return;
       try {
@@ -504,42 +587,27 @@ async function parseHtmlToJson(html, SuperDoc) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           onReady: ({ superdoc: sd }) => {
             if (resolved) return;
-            try {
-              const editor = sd?.activeEditor;
-              if (!editor) {
-                throw new Error("No active editor found");
-              }
-              const view = editor.view;
-              if (!view) {
-                throw new Error("No editor view found");
-              }
-              editor.commands.selectAll();
-              editor.commands.deleteSelection();
-              view.pasteHTML(html);
-              setTimeout(() => {
+            tryPasteApproach(
+              sd,
+              // Success callback
+              (json) => {
                 if (resolved) return;
-                try {
-                  const json = editor.getJSON();
-                  resolved = true;
-                  cleanup();
-                  resolve(json);
-                } catch (err) {
-                  resolved = true;
-                  cleanup();
-                  reject(err);
-                }
-              }, 50);
-            } catch (err) {
-              resolved = true;
-              cleanup();
-              reject(err);
-            }
+                resolved = true;
+                cleanup();
+                resolve(json);
+              },
+              // Fail callback - try fallback
+              () => {
+                if (resolved) return;
+                console.warn("[parseHtmlToJson] Paste approach failed, falling back to import");
+                fallbackToImport();
+              }
+            );
           },
           onException: ({ error: err }) => {
             if (resolved) return;
-            resolved = true;
-            cleanup();
-            reject(err);
+            console.warn("[parseHtmlToJson] Paste approach exception, falling back:", err);
+            fallbackToImport();
           }
         });
         setTimeout(() => {
@@ -550,8 +618,12 @@ async function parseHtmlToJson(html, SuperDoc) {
           }
         }, TIMEOUTS.PARSE_TIMEOUT);
       } catch (err) {
-        cleanup();
-        reject(err);
+        try {
+          fallbackToImport();
+        } catch (fallbackErr) {
+          cleanup();
+          reject(fallbackErr);
+        }
       }
     }, 50);
   });

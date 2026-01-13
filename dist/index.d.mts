@@ -436,6 +436,8 @@ declare function isProseMirrorJSON(content: unknown): boolean;
  * 3. Select all content and delete it (start fresh)
  * 4. Use editor.view.pasteHTML(html) - this uses the paste path which preserves styles
  * 5. Return the resulting JSON
+ *
+ * Falls back to the standard import approach if paste fails.
  */
 declare function parseHtmlToJson(html: string, SuperDoc: SuperDocConstructor): Promise<ProseMirrorJSON>;
 /**

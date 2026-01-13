@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.45] - 2026-01-13
+
+### Fixed
+
+- **`parseHtml()` paste approach now works correctly**: Fixed the `pasteHTML` call that was failing with `Cannot read properties of null (reading 'getData')`. The issue was that `pasteHTML(html, event)` internally requires a proper `ClipboardEvent` with `clipboardData.getData()` method.
+
+### Technical Details
+
+- Created a mock `ClipboardEvent` with a `DataTransfer` object containing the HTML content
+- The mock event is passed to `view.pasteHTML(html, mockEvent)` so SuperDoc's paste handler can access clipboard data
+- Added fallback to standard import approach if paste method fails for any reason
+- Console warning shown when falling back: `[parseHtmlToJson] Paste approach failed, falling back to import`
+
 ## [1.0.44] - 2026-01-13
 
 ### Fixed
