@@ -183,17 +183,34 @@ Combine **fingerprinting** (for node matching) with **block-level alignment** (f
 
 **Goal**: Generate merged document with all change types, using shared IDs for structural changes
 
-- [x] Update `mergeDocuments.ts` for structural changes
-- [x] Generate shared IDs for all marks within a structural change
-- [x] Mark all text in inserted blocks with `trackInsert` (same ID)
-- [x] Mark all text in deleted blocks with `trackDelete` (same ID)
-- [x] Handle attribute changes: apply `trackFormat` to representative text
+#### Phase 6a: Detection & Metadata (✅ Complete)
+
+- [x] Generate shared IDs for structural changes
 - [x] Build `StructuralChangeInfo[]` metadata for the pane
 - [x] Return extended result with structural change metadata
-- [x] Preserve document structure integrity
+- [x] Create marking functions (`markAllTextAsInserted`, `markAllTextAsDeleted`)
+
+#### Phase 6b: Structural Merge Integration (❌ CRITICAL - Not Implemented)
+
+> **BLOCKER**: The current implementation DETECTS structural changes but does NOT APPLY them to the merged document. The character-level merge (`mergeDocuments`) doesn't know about structural changes, and `processStructuralChanges` creates metadata but never modifies the document.
+
+- [ ] Create `structuralMerger.ts` - Structure-aware merge service
+- [ ] Implement structure-first merge flow (align → merge per block)
+- [ ] For matched blocks: apply character-level diff internally
+- [ ] For inserted blocks: insert entire node structure with `trackInsert` marks
+- [ ] For deleted blocks: keep node with all text marked `trackDelete`
+- [ ] Handle nested structures (table → rows → cells)
+- [ ] Ensure marks use the same IDs as `StructuralChangeInfo`
+- [ ] Update `compareWith()` to use new merge flow
+- [ ] Preserve document structure integrity
 - [ ] Integration tests for full round-trip
 
-**Deliverable**: Merged document with grouped structural changes (shared IDs) + metadata for pane
+**Current State**: 
+- `processStructuralChanges()` creates `StructuralChange[]` with marked nodes
+- But those marked nodes are NEVER inserted into the actual merged document
+- Result: Pane shows changes, but document doesn't reflect them
+
+**Deliverable**: Merged document with structural changes ACTUALLY APPLIED (not just detected)
 
 ### Phase 7: Context Extraction
 
@@ -407,19 +424,216 @@ function markBlockAsDeleted(node: ProseMirrorNode, author: Author): ProseMirrorN
 
 ---
 
+## Phase 6b: Structural Merge Implementation (CRITICAL)
+
+This section details the missing piece that makes structural changes actually work.
+
+### The Problem
+
+Current flow in `compareWith()`:
+```
+1. diffDocuments(sourceJson, newJson)           → character-level diff
+2. mergeDocuments(sourceJson, newJson, diff)    → merged doc (character-level only!)
+3. processStructuralChanges(sourceJson, newJson) → detects changes, creates metadata
+4. setEditorContent(merged)                      → shows document
+```
+
+**Issue**: Step 3 creates `StructuralChange[]` with marked nodes, but those nodes are never integrated into the merged document from Step 2.
+
+### The Solution: Structure-First Merge
+
+Replace Steps 1-3 with a structure-aware merge:
+
+```
+1. alignDocuments(sourceJson, newJson)          → matched/inserted/deleted blocks
+2. For each block alignment:
+   ├── Matched: mergeMatchedBlock(blockA, blockB) → character-level diff inside
+   ├── Inserted: createInsertedBlock(blockB)      → all text marked trackInsert
+   └── Deleted: createDeletedBlock(blockA)        → all text marked trackDelete
+3. Combine into merged document
+4. Generate StructuralChangeInfo[] from the changes
+```
+
+### New Service: `structuralMerger.ts`
+
+```typescript
+/**
+ * Structure-aware document merge.
+ * Aligns blocks first, then applies appropriate merge strategy per block.
+ */
+
+interface StructuralMergeResult {
+  mergedDoc: ProseMirrorJSON;
+  structuralInfos: StructuralChangeInfo[];
+  // Character-level changes for matched blocks
+  textChanges: { blockPath: number[]; segments: DiffSegment[] }[];
+}
+
+function mergeWithStructuralAwareness(
+  docA: ProseMirrorJSON,
+  docB: ProseMirrorJSON,
+  author: TrackChangeAuthor
+): StructuralMergeResult {
+  // 1. Align top-level blocks
+  const alignment = alignDocuments(docA, docB);
+  
+  // 2. Process each alignment
+  const mergedBlocks: ProseMirrorJSON[] = [];
+  const structuralInfos: StructuralChangeInfo[] = [];
+  
+  // Process in merged order (combining A's position with B's insertions)
+  // ...
+  
+  return { mergedDoc, structuralInfos, textChanges };
+}
+```
+
+### Core Functions Needed
+
+| Function | Purpose |
+|----------|---------|
+| `mergeWithStructuralAwareness()` | Main entry point, orchestrates the merge |
+| `processAlignment()` | Converts alignment result to merge operations |
+| `mergeMatchedBlock()` | Character-level diff within a matched block |
+| `createInsertedBlock()` | Mark all text with trackInsert, generate ID |
+| `createDeletedBlock()` | Mark all text with trackDelete, generate ID |
+| `mergeMatchedTable()` | Recurse into table rows, apply same logic |
+| `mergeMatchedList()` | Recurse into list items, apply same logic |
+
+### Merge Order Algorithm
+
+Key challenge: Maintaining correct document order when combining matched, inserted, and deleted blocks.
+
+```typescript
+function computeMergeOrder(
+  alignment: AlignmentResult,
+  docA: ProseMirrorJSON,
+  docB: ProseMirrorJSON
+): MergeOperation[] {
+  const operations: MergeOperation[] = [];
+  
+  // Build position map: for each position in docB, what's there?
+  // - If matched to A: use merged result
+  // - If inserted: use B's node with insert marks
+  // - Deleted nodes from A: insert with delete marks
+  
+  // Algorithm:
+  // 1. Walk through docB positions
+  // 2. For each position, check if it's a match or insertion
+  // 3. Track which A positions haven't been used (deletions)
+  // 4. Insert deletions at their original relative positions
+  
+  return operations;
+}
+
+interface MergeOperation {
+  type: 'matched' | 'inserted' | 'deleted';
+  nodeA?: ProseMirrorJSON;  // For matched/deleted
+  nodeB?: ProseMirrorJSON;  // For matched/inserted
+  changeId?: string;         // For structural changes
+}
+```
+
+### Handling Nested Structures
+
+For tables and lists, recurse the same pattern:
+
+```
+Table matched (A.table[0] ↔ B.table[0]):
+  ├── Row matched (A.row[0] ↔ B.row[0]):
+  │     └── Apply character-level merge to cells
+  ├── Row inserted (-- ↔ B.row[1]):
+  │     └── Insert row with all text marked trackInsert
+  └── Row matched (A.row[1] ↔ B.row[2]):
+        └── Apply character-level merge to cells
+```
+
+### Updated `compareWith()` Flow
+
+```typescript
+async compareWith(content: DocxContent): Promise<ComparisonResult> {
+  // ... resolve content to JSON ...
+  
+  // NEW: Use structure-aware merge instead of character-level
+  const { mergedDoc, structuralInfos, textChanges } = mergeWithStructuralAwareness(
+    sourceJson,
+    newJson,
+    author
+  );
+  
+  // Store for pane
+  setStructuralChanges(structuralInfos);
+  setMergedJson(mergedDoc);
+  
+  // Update editor
+  setEditorContent(superdocRef.current.activeEditor, mergedDoc);
+  enableReviewMode(superdocRef.current);
+  
+  // Trigger comment creation for track marks
+  // (existing code for processLoadedDocxComments)
+  
+  // Build result
+  const result: ComparisonResult = {
+    totalChanges: textChanges.length + structuralInfos.length,
+    // ...
+  };
+  
+  return result;
+}
+```
+
+### File Changes for Phase 6b
+
+| File | Changes |
+|------|---------|
+| **New: `services/structuralMerger.ts`** | Core structural merge implementation |
+| `DocxDiffEditor.tsx` | Update `compareWith()` to use new merge |
+| `blockLevelMerger.ts` | Refactor to support new flow, or deprecate |
+| `services/index.ts` | Export new service |
+
+### Phase 6b Implementation Status: ✅ Complete
+
+The `structuralMerger.ts` service was implemented on 2026-01-13 with the following capabilities:
+
+1. **Block alignment at document level**: Uses `alignDocuments()` to match paragraphs, tables, lists
+2. **Recursive structural merge for tables**: `mergeMatchedTable()` aligns and merges rows
+3. **Recursive structural merge for lists**: `mergeMatchedList()` aligns and merges items
+4. **Character-level diff for matched blocks**: Uses existing `mergeDocuments()` within matched blocks
+5. **Insert/delete marking**: New blocks get `trackInsert` marks, deleted blocks get `trackDelete` marks
+6. **Shared IDs for pane integration**: Each structural change gets a UUID for accept/reject
+
+The `DocxDiffEditor.tsx` `compareWith()` method now uses `mergeWithStructuralAwareness()` instead of the previous character-level-only approach.
+
+### Testing Phase 6b
+
+| Test | Description |
+|------|-------------|
+| Paragraph insert | New paragraph appears with green text |
+| Paragraph delete | Deleted paragraph shows with strikethrough |
+| Table row insert | New row appears with green text in all cells |
+| Table row delete | Deleted row shows with strikethrough |
+| Mixed changes | Both structural and character-level changes work |
+| Accept via pane | Structural change accepted, marks removed |
+| Reject via pane | Structural change rejected, content reverted |
+
+---
+
 ## File Changes
 
 ### New Files
 
-| File | Purpose |
-|------|---------|
-| `services/nodeFingerprint.ts` | Fingerprint generation for all node types |
-| `services/nodeAligner.ts` | LCS-based node alignment algorithm |
-| `services/attrComparer.ts` | Deep attribute comparison with defaults |
-| `services/tableBlockDiffer.ts` | Table-specific diffing logic |
-| `services/listBlockDiffer.ts` | List-specific diffing logic |
-| `components/StructuralChangesPane.tsx` | Floating pane for structural changes UI |
-| `styles/structural-pane.css` | Styles for the structural changes pane |
+| File | Purpose | Status |
+|------|---------|--------|
+| `services/nodeFingerprint.ts` | Fingerprint generation for all node types | ✅ Done |
+| `services/nodeAligner.ts` | LCS-based node alignment algorithm | ✅ Done |
+| `services/attrComparer.ts` | Deep attribute comparison with defaults | ✅ Done |
+| `services/tableBlockDiffer.ts` | Table-specific diffing logic | ✅ Done |
+| `services/listBlockDiffer.ts` | List-specific diffing logic | ✅ Done |
+| `services/nonTextNodeDiffer.ts` | Image and atomic node diffing | ✅ Done |
+| `services/blockLevelMerger.ts` | Structural change detection and metadata | ✅ Done |
+| `services/structuralMerger.ts` | Structure-aware document merge | ✅ Done |
+| `components/StructuralChangesPane.tsx` | Floating pane for structural changes UI | ✅ Done |
+| `styles/structural-pane.css` | Styles for the structural changes pane | ✅ Done |
 
 ### Modified Files
 
@@ -960,20 +1174,28 @@ interface DocxDiffEditorProps {
 
 ## Timeline Estimate
 
-| Phase | Effort | Dependencies |
-|-------|--------|--------------|
-| Phase 1: Foundation | 3-4 days | None |
-| Phase 2: Attribute Comparison | 2-3 days | Phase 1 |
-| Phase 3: Table Support | 4-5 days | Phases 1, 2 |
-| Phase 4: List Support | 3-4 days | Phase 1 |
-| Phase 5: Non-Text Nodes | 2-3 days | Phase 1 |
-| Phase 6: Merge & Output | 3-4 days | Phases 1-5 |
-| Phase 7: Context Extraction | 2-3 days | Phase 6 |
-| Phase 8: Structural Changes Pane | 4-5 days | Phase 6 |
+| Phase | Effort | Status | Dependencies |
+|-------|--------|--------|--------------|
+| Phase 1: Foundation | 3-4 days | ✅ Done | None |
+| Phase 2: Attribute Comparison | 2-3 days | ✅ Done | Phase 1 |
+| Phase 3: Table Support | 4-5 days | ✅ Done | Phases 1, 2 |
+| Phase 4: List Support | 3-4 days | ✅ Done | Phase 1 |
+| Phase 5: Non-Text Nodes | 2-3 days | ✅ Done | Phase 1 |
+| Phase 6a: Detection & Metadata | 1-2 days | ✅ Done | Phases 1-5 |
+| **Phase 6b: Structural Merge** | **3-4 days** | **❌ BLOCKER** | Phase 6a |
+| Phase 7: Context Extraction | 2-3 days | ✅ Done | Phase 6a |
+| Phase 8: Structural Changes Pane | 4-5 days | ⚠️ UI Done | Phase 6b for functionality |
 
-**Total Estimate**: 
-- Core functionality (Phases 1-7): ~3-4 weeks
-- With Structural Changes Pane (Phase 8): ~4-5 weeks
+**Current State**: 
+- Phases 1-5: Complete (detection infrastructure)
+- Phase 6a: Complete (metadata generation)
+- **Phase 6b: NOT DONE** (structural merge not implemented)
+- Phase 7: Complete (context extraction)
+- Phase 8: UI complete, but non-functional without Phase 6b
+
+**Remaining Effort**:
+- Phase 6b: ~3-4 days (critical path)
+- Testing: ~2 days
 
 ### Recommended Order
 
@@ -1015,6 +1237,24 @@ Week 5: Phase 8 (Structural Changes Pane)
    
    **Answer**: Use shared IDs across all marks in a structural change. Call `acceptTrackedChangeById(sharedId)` or `rejectTrackedChangeById(sharedId)` to process all related marks at once. Build a Structural Changes Pane to provide grouped UI for these actions.
 
+### Critical Issue Found
+
+> ⚠️ **Phase 6b BLOCKER**: The structural merge is not integrated. Detection works, but the merged document doesn't contain the structural changes. See Phase 6b above.
+
+**Symptoms:**
+1. Structural Changes Pane shows detected changes
+2. Accept/Reject does nothing (no marks exist in document with those IDs)
+3. Tables added in `compareWith` JSON don't appear in editor (structure lost in character-level merge)
+
+**Root Cause:**
+- `mergeDocuments()` only handles character-level text changes
+- `processStructuralChanges()` creates metadata but doesn't modify the document
+- The marked nodes in `StructuralChange.node` are never inserted into the merged document
+
+**Solution Required:**
+- Implement Phase 6b: Structure-aware merge that actually applies structural changes
+- See `PLAN-DEFENSIVE-REJECT.md` for related reject fallback strategy
+
 ### Remaining Questions
 
 3. **Performance**: For large documents with many tables, will recursive fingerprinting be fast enough? May need memoization or incremental computation.
@@ -1026,6 +1266,8 @@ Week 5: Phase 8 (Structural Changes Pane)
 6. **Bubble Sync**: ✅ RESOLVED - Using SuperDoc's `onCommentsUpdate` callback. When `event.type === 'resolved'` and the `commentId` matches one of our structural change IDs, we remove it from state.
 
 7. **Attribute Reject Logic**: For attribute-only changes using `trackFormat`, SuperDoc's reject may not know how to revert node attributes. May need custom reject handler for attribute changes.
+
+8. **Structure-First Merge**: Need to implement a merge that processes aligned blocks, not just character positions. This is prerequisite for structural changes to work.
 
 ---
 

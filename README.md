@@ -6,8 +6,9 @@ A React component for DOCX document comparison with track changes visualization.
 
 - 📄 Compare two DOCX documents side by side
 - 🔍 Character-level diff with track changes
-- 📊 **Block-level diffing** for tables, lists, and images
-- ✅ Accept/reject individual changes
+- 📊 **Block-level structural diffing** for tables, lists, paragraphs, and images
+- 🔄 **Structure-aware merge** - inserted/deleted blocks appear in the editor with track marks
+- ✅ Accept/reject individual changes (both text and structural)
 - 🎨 Visual track changes (insert, delete, format)
 - 📋 **Structural Changes Pane** for table rows, list items, images
 - 🤖 Extract enriched change context for LLM processing
@@ -311,6 +312,18 @@ The component supports three types of track changes:
 ## Structural Changes Pane
 
 When comparing documents with structural differences (tables, lists, images), a floating pane appears showing these changes with Accept/Reject controls.
+
+### How It Works
+
+The component uses a **structure-aware merge** approach:
+
+1. **Block alignment**: Documents are aligned at the block level (paragraphs, tables, lists) using content fingerprinting
+2. **Recursive merge**: Tables and lists are merged recursively (row-by-row, item-by-item)
+3. **Character-level diff**: Within matched blocks, character-level diffing is applied
+4. **Insert/delete marking**: New blocks get `trackInsert` marks; deleted blocks are preserved with `trackDelete` marks
+5. **Shared IDs**: Each structural change has a unique ID linking the track marks to the pane entry
+
+This means inserted tables, paragraphs, and list items actually appear in the editor (with green highlighting), and deleted content remains visible (with red strikethrough) until you accept or reject the changes.
 
 ### What's Detected
 

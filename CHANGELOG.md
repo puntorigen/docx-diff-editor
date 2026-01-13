@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.43] - 2026-01-13
+
+### Fixed
+
+- **Structural changes now actually work**: Implemented `structuralMerger.ts`, the critical missing piece that makes structural changes visible and actionable. Previously, structural changes were only detected but not applied to the merged document—tables, paragraphs, and list items that were inserted or deleted would not appear in the editor, and the Structural Changes Pane's Accept/Reject buttons did nothing.
+
+### Added
+
+- **`mergeWithStructuralAwareness()` service**: New structure-aware merge function that:
+  - Aligns documents at block level (paragraphs, tables, lists) before merging
+  - Recursively merges matched tables row-by-row and lists item-by-item
+  - Applies character-level diff within matched blocks
+  - Inserts new blocks with `trackInsert` marks on all text content
+  - Keeps deleted blocks with `trackDelete` marks on all text content
+  - Generates `StructuralChangeInfo` metadata with shared UUIDs for pane integration
+
+### Changed
+
+- **`compareWith()` now uses structural merge**: The comparison flow now uses `mergeWithStructuralAwareness()` instead of the previous character-level-only approach. This means:
+  - Inserted tables, paragraphs, and list items are now visible in the editor with green (insert) highlighting
+  - Deleted content is now preserved with red (delete) strikethrough
+  - The Structural Changes Pane's Accept/Reject buttons now work correctly via SuperDoc's `acceptTrackedChangeById`/`rejectTrackedChangeById` commands
+
 ## [1.0.42] - 2026-01-13
 
 ### Added

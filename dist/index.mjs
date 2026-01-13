@@ -773,204 +773,6 @@ function diffDocuments(docA, docB) {
     summary
   };
 }
-function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
-  return {
-    type: "trackInsert",
-    attrs: {
-      id: id ?? v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  };
-}
-function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
-  return {
-    type: "trackDelete",
-    attrs: {
-      id: id ?? v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString()
-    }
-  };
-}
-function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
-  return {
-    type: "trackFormat",
-    attrs: {
-      id: v4(),
-      author: author.name,
-      authorEmail: author.email,
-      authorImage: "",
-      date: (/* @__PURE__ */ new Date()).toISOString(),
-      before,
-      after
-    }
-  };
-}
-
-// src/services/mergeDocuments.ts
-function cloneNode(node) {
-  return JSON.parse(JSON.stringify(node));
-}
-function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
-  const merged = cloneNode(docA);
-  const charStates = [];
-  let insertions = [];
-  const formatChanges = diffResult.formatChanges || [];
-  function getFormatChangeAt(pos) {
-    for (const fc of formatChanges) {
-      if (pos >= fc.from && pos < fc.to) {
-        return fc;
-      }
-    }
-    return null;
-  }
-  let docAOffset = 0;
-  const segments = diffResult.segments;
-  for (let segIdx = 0; segIdx < segments.length; segIdx++) {
-    const segment = segments[segIdx];
-    if (segment.type === "equal") {
-      for (let i = 0; i < segment.text.length; i++) {
-        charStates[docAOffset + i] = { type: "equal" };
-      }
-      docAOffset += segment.text.length;
-    } else if (segment.type === "delete") {
-      const nextSegment = segments[segIdx + 1];
-      const isReplacement = nextSegment && nextSegment.type === "insert";
-      const replacementId = isReplacement ? v4() : void 0;
-      for (let i = 0; i < segment.text.length; i++) {
-        charStates[docAOffset + i] = { type: "delete", replacementId };
-      }
-      docAOffset += segment.text.length;
-      if (isReplacement && nextSegment) {
-        insertions.push({
-          afterOffset: docAOffset,
-          text: nextSegment.text,
-          replacementId
-        });
-        segIdx++;
-      }
-    } else if (segment.type === "insert") {
-      insertions.push({
-        afterOffset: docAOffset,
-        text: segment.text
-      });
-    }
-  }
-  function transformNode(node, nodeOffset, path) {
-    if (node.type === "text" && node.text) {
-      const text = node.text;
-      const result = [];
-      let i = 0;
-      while (i < text.length) {
-        const charOffset = nodeOffset + i;
-        const charState = charStates[charOffset] || { type: "equal" };
-        const insertionsHere = insertions.filter((ins) => ins.afterOffset === charOffset);
-        for (const ins of insertionsHere) {
-          result.push({
-            type: "text",
-            text: ins.text,
-            marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
-          });
-        }
-        const currentFormatChange = getFormatChangeAt(nodeOffset + i);
-        let j = i + 1;
-        while (j < text.length) {
-          const nextState = charStates[nodeOffset + j] || { type: "equal" };
-          if (nextState.type !== charState.type) break;
-          if (insertions.some((ins) => ins.afterOffset === nodeOffset + j)) break;
-          const nextFormatChange = getFormatChangeAt(nodeOffset + j);
-          if (currentFormatChange !== nextFormatChange) break;
-          j++;
-        }
-        const chunk = text.substring(i, j);
-        let marks = [...node.marks || []];
-        if (charState.type === "delete") {
-          marks.push(createTrackDeleteMark(author, charState.replacementId));
-        } else if (charState.type === "equal") {
-          if (currentFormatChange) {
-            const trackFormatMark = createTrackFormatMark(
-              currentFormatChange.before,
-              currentFormatChange.after,
-              author
-            );
-            marks = [...currentFormatChange.after, trackFormatMark];
-          }
-        }
-        result.push({
-          type: "text",
-          text: chunk,
-          marks: marks.length > 0 ? marks : void 0
-        });
-        i = j;
-      }
-      const endOffset = nodeOffset + text.length;
-      const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
-      for (const ins of endInsertions) {
-        result.push({
-          type: "text",
-          text: ins.text,
-          marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
-        });
-      }
-      insertions = insertions.filter(
-        (ins) => ins.afterOffset < nodeOffset || ins.afterOffset > endOffset
-      );
-      return { nodes: result, consumedLength: text.length };
-    }
-    if (node.content && Array.isArray(node.content)) {
-      const newContent = [];
-      let offset = nodeOffset;
-      for (const child of node.content) {
-        const { nodes, consumedLength } = transformNode(child, offset);
-        newContent.push(...nodes);
-        offset += consumedLength;
-      }
-      return {
-        nodes: [{ ...node, content: newContent }],
-        consumedLength: offset - nodeOffset
-      };
-    }
-    return { nodes: [node], consumedLength: 0 };
-  }
-  if (merged.content && Array.isArray(merged.content)) {
-    const newContent = [];
-    let offset = 0;
-    for (let i = 0; i < merged.content.length; i++) {
-      const child = merged.content[i];
-      const { nodes, consumedLength } = transformNode(child, offset);
-      newContent.push(...nodes);
-      offset += consumedLength;
-    }
-    merged.content = newContent;
-  }
-  if (insertions.length > 0) {
-    for (const ins of insertions) {
-      const insertNode = {
-        type: "paragraph",
-        content: [
-          {
-            type: "run",
-            content: [
-              {
-                type: "text",
-                text: ins.text,
-                marks: [createTrackInsertMark(author, ins.replacementId)]
-              }
-            ]
-          }
-        ]
-      };
-      if (!merged.content) merged.content = [];
-      merged.content.push(insertNode);
-    }
-  }
-  return merged;
-}
 
 // src/services/changeContextExtractor.ts
 function extractEnrichedChanges(mergedJson) {
@@ -1229,6 +1031,44 @@ function groupReplacements(changes) {
   }
   return result;
 }
+function createTrackInsertMark(author = DEFAULT_AUTHOR, id) {
+  return {
+    type: "trackInsert",
+    attrs: {
+      id: id ?? v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
+  return {
+    type: "trackDelete",
+    attrs: {
+      id: id ?? v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString()
+    }
+  };
+}
+function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
+  return {
+    type: "trackFormat",
+    attrs: {
+      id: v4(),
+      author: author.name,
+      authorEmail: author.email,
+      authorImage: "",
+      date: (/* @__PURE__ */ new Date()).toISOString(),
+      before,
+      after
+    }
+  };
+}
 
 // src/services/nodeAligner.ts
 init_nodeFingerprint();
@@ -1408,6 +1248,164 @@ function alignListItems(listA, listB, listPathA, listPathB) {
     item.fingerprint = generateFingerprint2(item.node);
   }
   return alignNodes(itemsA, itemsB);
+}
+function cloneNode(node) {
+  return JSON.parse(JSON.stringify(node));
+}
+function mergeDocuments(docA, docB, diffResult, author = DEFAULT_AUTHOR) {
+  const merged = cloneNode(docA);
+  const charStates = [];
+  let insertions = [];
+  const formatChanges = diffResult.formatChanges || [];
+  function getFormatChangeAt(pos) {
+    for (const fc of formatChanges) {
+      if (pos >= fc.from && pos < fc.to) {
+        return fc;
+      }
+    }
+    return null;
+  }
+  let docAOffset = 0;
+  const segments = diffResult.segments;
+  for (let segIdx = 0; segIdx < segments.length; segIdx++) {
+    const segment = segments[segIdx];
+    if (segment.type === "equal") {
+      for (let i = 0; i < segment.text.length; i++) {
+        charStates[docAOffset + i] = { type: "equal" };
+      }
+      docAOffset += segment.text.length;
+    } else if (segment.type === "delete") {
+      const nextSegment = segments[segIdx + 1];
+      const isReplacement = nextSegment && nextSegment.type === "insert";
+      const replacementId = isReplacement ? v4() : void 0;
+      for (let i = 0; i < segment.text.length; i++) {
+        charStates[docAOffset + i] = { type: "delete", replacementId };
+      }
+      docAOffset += segment.text.length;
+      if (isReplacement && nextSegment) {
+        insertions.push({
+          afterOffset: docAOffset,
+          text: nextSegment.text,
+          replacementId
+        });
+        segIdx++;
+      }
+    } else if (segment.type === "insert") {
+      insertions.push({
+        afterOffset: docAOffset,
+        text: segment.text
+      });
+    }
+  }
+  function transformNode(node, nodeOffset, path) {
+    if (node.type === "text" && node.text) {
+      const text = node.text;
+      const result = [];
+      let i = 0;
+      while (i < text.length) {
+        const charOffset = nodeOffset + i;
+        const charState = charStates[charOffset] || { type: "equal" };
+        const insertionsHere = insertions.filter((ins) => ins.afterOffset === charOffset);
+        for (const ins of insertionsHere) {
+          result.push({
+            type: "text",
+            text: ins.text,
+            marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
+          });
+        }
+        const currentFormatChange = getFormatChangeAt(nodeOffset + i);
+        let j = i + 1;
+        while (j < text.length) {
+          const nextState = charStates[nodeOffset + j] || { type: "equal" };
+          if (nextState.type !== charState.type) break;
+          if (insertions.some((ins) => ins.afterOffset === nodeOffset + j)) break;
+          const nextFormatChange = getFormatChangeAt(nodeOffset + j);
+          if (currentFormatChange !== nextFormatChange) break;
+          j++;
+        }
+        const chunk = text.substring(i, j);
+        let marks = [...node.marks || []];
+        if (charState.type === "delete") {
+          marks.push(createTrackDeleteMark(author, charState.replacementId));
+        } else if (charState.type === "equal") {
+          if (currentFormatChange) {
+            const trackFormatMark = createTrackFormatMark(
+              currentFormatChange.before,
+              currentFormatChange.after,
+              author
+            );
+            marks = [...currentFormatChange.after, trackFormatMark];
+          }
+        }
+        result.push({
+          type: "text",
+          text: chunk,
+          marks: marks.length > 0 ? marks : void 0
+        });
+        i = j;
+      }
+      const endOffset = nodeOffset + text.length;
+      const endInsertions = insertions.filter((ins) => ins.afterOffset === endOffset);
+      for (const ins of endInsertions) {
+        result.push({
+          type: "text",
+          text: ins.text,
+          marks: [...node.marks || [], createTrackInsertMark(author, ins.replacementId)]
+        });
+      }
+      insertions = insertions.filter(
+        (ins) => ins.afterOffset < nodeOffset || ins.afterOffset > endOffset
+      );
+      return { nodes: result, consumedLength: text.length };
+    }
+    if (node.content && Array.isArray(node.content)) {
+      const newContent = [];
+      let offset = nodeOffset;
+      for (const child of node.content) {
+        const { nodes, consumedLength } = transformNode(child, offset);
+        newContent.push(...nodes);
+        offset += consumedLength;
+      }
+      return {
+        nodes: [{ ...node, content: newContent }],
+        consumedLength: offset - nodeOffset
+      };
+    }
+    return { nodes: [node], consumedLength: 0 };
+  }
+  if (merged.content && Array.isArray(merged.content)) {
+    const newContent = [];
+    let offset = 0;
+    for (let i = 0; i < merged.content.length; i++) {
+      const child = merged.content[i];
+      const { nodes, consumedLength } = transformNode(child, offset);
+      newContent.push(...nodes);
+      offset += consumedLength;
+    }
+    merged.content = newContent;
+  }
+  if (insertions.length > 0) {
+    for (const ins of insertions) {
+      const insertNode = {
+        type: "paragraph",
+        content: [
+          {
+            type: "run",
+            content: [
+              {
+                type: "text",
+                text: ins.text,
+                marks: [createTrackInsertMark(author, ins.replacementId)]
+              }
+            ]
+          }
+        ]
+      };
+      if (!merged.content) merged.content = [];
+      merged.content.push(insertNode);
+    }
+  }
+  return merged;
 }
 
 // src/services/attrComparer.ts
@@ -1641,6 +1639,9 @@ function diffTables(tableA, tableB, tablePathA, tablePathB) {
 function isTable(node) {
   return node?.type === "table";
 }
+function isTableRow(node) {
+  return node?.type === "tableRow";
+}
 function getRowLocation(tablePath, rowIndex, tableIndex) {
   return `Table ${tableIndex + 1}, Row ${rowIndex + 1}`;
 }
@@ -1676,6 +1677,9 @@ function extractCellText(cell) {
 }
 function isList(node) {
   return node?.type === "bulletList" || node?.type === "orderedList";
+}
+function isListItem(node) {
+  return node?.type === "listItem";
 }
 function extractListItemText(item) {
   const texts = [];
@@ -1909,7 +1913,10 @@ function getImagePreview(node) {
   return "(image)";
 }
 
-// src/services/blockLevelMerger.ts
+// src/services/structuralMerger.ts
+function cloneNode2(node) {
+  return JSON.parse(JSON.stringify(node));
+}
 function markAllTextAsInserted(node, sharedId, author) {
   if (node.type === "text") {
     return {
@@ -1925,7 +1932,7 @@ function markAllTextAsInserted(node, sharedId, author) {
       )
     };
   }
-  return node;
+  return { ...node };
 }
 function markAllTextAsDeleted(node, sharedId, author) {
   if (node.type === "text") {
@@ -1942,10 +1949,7 @@ function markAllTextAsDeleted(node, sharedId, author) {
       )
     };
   }
-  return node;
-}
-function cloneNode2(node) {
-  return JSON.parse(JSON.stringify(node));
+  return { ...node };
 }
 function extractTextPreview(node, maxLength = 50) {
   const texts = [];
@@ -1966,197 +1970,361 @@ function extractTextPreview(node, maxLength = 50) {
   }
   return text || "(empty)";
 }
-function processStructuralChanges(docA, docB, author = DEFAULT_AUTHOR) {
-  const changes = [];
-  const infos = [];
-  const alignment = alignDocuments(docA, docB);
-  let tableIndex = 0;
-  let listIndex = 0;
-  let paragraphIndex = 0;
-  for (const inserted of alignment.insertions) {
-    const node = inserted.node;
-    const sharedId = v4();
-    const date = (/* @__PURE__ */ new Date()).toISOString();
-    let type = "paragraphInsert";
-    let location = "";
-    let preview = "";
-    if (isTable(node)) {
-      type = "rowInsert";
-      location = `New table at position ${inserted.path[0] + 1}`;
-      preview = `Table with ${node.content?.length || 0} rows`;
-      tableIndex++;
-    } else if (isList(node)) {
-      type = "listItemInsert";
-      location = `New list at position ${inserted.path[0] + 1}`;
-      preview = `List with ${node.content?.length || 0} items`;
-      listIndex++;
-    } else {
-      type = "paragraphInsert";
-      paragraphIndex++;
-      location = `Paragraph ${paragraphIndex}`;
-      preview = extractTextPreview(node);
-    }
-    changes.push({
-      id: sharedId,
-      type,
-      nodeType: node.type,
-      path: inserted.path,
-      node: markAllTextAsInserted(cloneNode2(node), sharedId, author)
-    });
-    infos.push({
-      id: sharedId,
-      type,
-      nodeType: node.type,
-      location,
-      preview,
-      author,
-      date
-    });
-  }
-  for (const deleted of alignment.deletions) {
-    const node = deleted.node;
-    const sharedId = v4();
-    const date = (/* @__PURE__ */ new Date()).toISOString();
-    let type = "paragraphDelete";
-    let location = "";
-    let preview = "";
-    if (isTable(node)) {
-      type = "rowDelete";
-      location = `Deleted table at position ${deleted.path[0] + 1}`;
-      preview = `Table with ${node.content?.length || 0} rows`;
-    } else if (isList(node)) {
-      type = "listItemDelete";
-      location = `Deleted list at position ${deleted.path[0] + 1}`;
-      preview = `List with ${node.content?.length || 0} items`;
-    } else {
-      type = "paragraphDelete";
-      location = `Deleted paragraph`;
-      preview = extractTextPreview(node);
-    }
-    changes.push({
-      id: sharedId,
-      type,
-      nodeType: node.type,
-      path: deleted.path,
-      node: markAllTextAsDeleted(cloneNode2(node), sharedId, author)
-    });
-    infos.push({
-      id: sharedId,
-      type,
-      nodeType: node.type,
-      location,
-      preview,
-      author,
-      date
-    });
-  }
-  for (const match of alignment.matched) {
-    const nodeA = docA.content?.[match.pathA[0]];
-    const nodeB = docB.content?.[match.pathB[0]];
-    if (!nodeA || !nodeB) continue;
-    if (isTable(nodeA) && isTable(nodeB)) {
-      tableIndex++;
-      const tableResult = diffTables(nodeA, nodeB, match.pathA, match.pathB);
-      for (const rowChange of tableResult.rowChanges) {
-        const sharedId = rowChange.id;
-        const date = (/* @__PURE__ */ new Date()).toISOString();
-        const rowIndex = rowChange.path[rowChange.path.length - 1];
-        const isInsert = rowChange.type === "rowInsert";
-        const location = getRowLocation(rowChange.path, rowIndex, tableIndex - 1);
-        const preview = getRowPreview(rowChange.node);
-        const markedNode = isInsert ? markAllTextAsInserted(cloneNode2(rowChange.node), sharedId, author) : markAllTextAsDeleted(cloneNode2(rowChange.node), sharedId, author);
-        changes.push({
-          ...rowChange,
-          node: markedNode
-        });
-        infos.push({
-          id: sharedId,
-          type: rowChange.type,
-          nodeType: "tableRow",
-          location,
-          preview,
-          author,
-          date
-        });
-      }
-    }
-    if (isList(nodeA) && isList(nodeB)) {
-      listIndex++;
-      const listResult = diffLists(nodeA, nodeB, match.pathA, match.pathB);
-      for (const itemChange of listResult.itemChanges) {
-        const sharedId = itemChange.id;
-        const date = (/* @__PURE__ */ new Date()).toISOString();
-        const itemIndex = itemChange.path[itemChange.path.length - 1];
-        const isInsert = itemChange.type === "listItemInsert";
-        const location = getListItemLocation(itemChange.path, itemIndex, listIndex - 1);
-        const preview = getListItemPreview(itemChange.node);
-        const markedNode = isInsert ? markAllTextAsInserted(cloneNode2(itemChange.node), sharedId, author) : markAllTextAsDeleted(cloneNode2(itemChange.node), sharedId, author);
-        changes.push({
-          ...itemChange,
-          node: markedNode
-        });
-        infos.push({
-          id: sharedId,
-          type: itemChange.type,
-          nodeType: "listItem",
-          location,
-          preview,
-          author,
-          date
-        });
-      }
-    }
-  }
-  const imageChanges = diffImages(docA, docB);
-  for (const imgInsert of imageChanges.inserted) {
-    const sharedId = imgInsert.id;
-    const date = (/* @__PURE__ */ new Date()).toISOString();
-    infos.push({
-      id: sharedId,
-      type: "imageInsert",
-      nodeType: "image",
-      location: getImageLocation(imgInsert.path),
-      preview: getImagePreview(imgInsert.node),
-      author,
-      date
-    });
-    changes.push(imgInsert);
-  }
-  for (const imgDelete of imageChanges.deleted) {
-    const sharedId = imgDelete.id;
-    const date = (/* @__PURE__ */ new Date()).toISOString();
-    infos.push({
-      id: sharedId,
-      type: "imageDelete",
-      nodeType: "image",
-      location: getImageLocation(imgDelete.path),
-      preview: getImagePreview(imgDelete.node),
-      author,
-      date
-    });
-    changes.push(imgDelete);
-  }
-  return { changes, infos };
+function getNodeTypeDescription(node) {
+  if (isTable(node)) return "Table";
+  if (isList(node)) return "List";
+  if (isListItem(node)) return "List item";
+  if (isTableRow(node)) return "Table row";
+  if (isImage(node)) return "Image";
+  if (node.type === "heading") return `Heading ${node.attrs?.level || 1}`;
+  if (node.type === "paragraph") return "Paragraph";
+  if (node.type === "blockquote") return "Blockquote";
+  if (node.type === "codeBlock") return "Code block";
+  return node.type || "Block";
 }
-function generateStructuralChangeSummary(infos) {
+function mergeWithStructuralAwareness(docA, docB, author = DEFAULT_AUTHOR) {
+  const structuralInfos = [];
   const summary = [];
-  const rowInserts = infos.filter((i) => i.type === "rowInsert").length;
-  const rowDeletes = infos.filter((i) => i.type === "rowDelete").length;
-  const paragraphInserts = infos.filter((i) => i.type === "paragraphInsert").length;
-  const paragraphDeletes = infos.filter((i) => i.type === "paragraphDelete").length;
-  const listItemInserts = infos.filter((i) => i.type === "listItemInsert").length;
-  const listItemDeletes = infos.filter((i) => i.type === "listItemDelete").length;
-  const imageInserts = infos.filter((i) => i.type === "imageInsert").length;
-  const imageDeletes = infos.filter((i) => i.type === "imageDelete").length;
-  if (rowInserts > 0) summary.push(`${rowInserts} row(s) inserted`);
-  if (rowDeletes > 0) summary.push(`${rowDeletes} row(s) deleted`);
-  if (paragraphInserts > 0) summary.push(`${paragraphInserts} paragraph(s) inserted`);
-  if (paragraphDeletes > 0) summary.push(`${paragraphDeletes} paragraph(s) deleted`);
-  if (listItemInserts > 0) summary.push(`${listItemInserts} list item(s) inserted`);
-  if (listItemDeletes > 0) summary.push(`${listItemDeletes} list item(s) deleted`);
-  if (imageInserts > 0) summary.push(`${imageInserts} image(s) inserted`);
-  if (imageDeletes > 0) summary.push(`${imageDeletes} image(s) deleted`);
-  return summary;
+  let textChangeCount = 0;
+  const alignment = alignDocuments(docA, docB);
+  const operations = buildMergeOperations(alignment, docA, docB);
+  const mergedContent = [];
+  let blockIndex = 0;
+  for (const op of operations) {
+    blockIndex++;
+    switch (op.type) {
+      case "matched": {
+        const { mergedNode, infos, changes } = mergeMatchedBlock(
+          op.nodeA,
+          op.nodeB,
+          blockIndex,
+          author
+        );
+        mergedContent.push(mergedNode);
+        structuralInfos.push(...infos);
+        textChangeCount += changes;
+        break;
+      }
+      case "inserted": {
+        const { markedNode, info } = createInsertedBlock(
+          op.nodeB,
+          blockIndex,
+          author
+        );
+        mergedContent.push(markedNode);
+        if (info) {
+          structuralInfos.push(info);
+        }
+        break;
+      }
+      case "deleted": {
+        const { markedNode, info } = createDeletedBlock(
+          op.nodeA,
+          blockIndex,
+          author
+        );
+        mergedContent.push(markedNode);
+        if (info) {
+          structuralInfos.push(info);
+        }
+        break;
+      }
+    }
+  }
+  const mergedDoc = {
+    type: "doc",
+    content: mergedContent
+  };
+  const insertCount = structuralInfos.filter((i) => i.type.includes("Insert")).length;
+  const deleteCount = structuralInfos.filter((i) => i.type.includes("Delete")).length;
+  if (insertCount > 0) summary.push(`${insertCount} block(s) inserted`);
+  if (deleteCount > 0) summary.push(`${deleteCount} block(s) deleted`);
+  if (textChangeCount > 0) summary.push(`${textChangeCount} text change(s)`);
+  return {
+    mergedDoc,
+    structuralInfos,
+    summary,
+    textChangeCount
+  };
+}
+function buildMergeOperations(alignment, docA, docB) {
+  const operations = [];
+  const matchedFromA = /* @__PURE__ */ new Map();
+  const matchedFromB = /* @__PURE__ */ new Map();
+  for (const match of alignment.matched) {
+    const idxA = match.pathA[0];
+    const idxB = match.pathB[0];
+    matchedFromA.set(idxA, { pathB: match.pathB, similarity: match.similarity });
+    matchedFromB.set(idxB, { pathA: match.pathA, similarity: match.similarity });
+  }
+  const deletedIndices = new Set(alignment.deletions.map((d) => d.path[0]));
+  const processedDeletions = /* @__PURE__ */ new Set();
+  const contentB = docB.content || [];
+  const contentA = docA.content || [];
+  for (let idxB = 0; idxB < contentB.length; idxB++) {
+    const nodeB = contentB[idxB];
+    const match = matchedFromB.get(idxB);
+    if (match) {
+      const idxA = match.pathA[0];
+      const nodeA = contentA[idxA];
+      for (let checkIdx = 0; checkIdx < idxA; checkIdx++) {
+        if (deletedIndices.has(checkIdx) && !processedDeletions.has(checkIdx)) {
+          operations.push({
+            type: "deleted",
+            nodeA: contentA[checkIdx],
+            pathA: [checkIdx]
+          });
+          processedDeletions.add(checkIdx);
+        }
+      }
+      operations.push({
+        type: "matched",
+        nodeA,
+        nodeB,
+        pathA: match.pathA,
+        pathB: [idxB]
+      });
+    } else {
+      operations.push({
+        type: "inserted",
+        nodeB,
+        pathB: [idxB]
+      });
+    }
+  }
+  for (const deletion of alignment.deletions) {
+    const idxA = deletion.path[0];
+    if (!processedDeletions.has(idxA)) {
+      operations.push({
+        type: "deleted",
+        nodeA: deletion.node,
+        pathA: deletion.path
+      });
+    }
+  }
+  return operations;
+}
+function mergeMatchedBlock(nodeA, nodeB, blockIndex, author) {
+  const infos = [];
+  let changes = 0;
+  if (isTable(nodeA) && isTable(nodeB)) {
+    const { mergedTable, tableInfos, changeCount } = mergeMatchedTable(
+      nodeA,
+      nodeB,
+      blockIndex,
+      author
+    );
+    return { mergedNode: mergedTable, infos: tableInfos, changes: changeCount };
+  }
+  if (isList(nodeA) && isList(nodeB)) {
+    const { mergedList, listInfos, changeCount } = mergeMatchedList(
+      nodeA,
+      nodeB,
+      blockIndex,
+      author
+    );
+    return { mergedNode: mergedList, infos: listInfos, changes: changeCount };
+  }
+  const diff = diffDocuments(
+    { type: "doc", content: [nodeA] },
+    { type: "doc", content: [nodeB] }
+  );
+  changes = diff.segments.filter((s) => s.type !== "equal").length;
+  changes += diff.formatChanges?.length || 0;
+  const merged = mergeDocuments(
+    { type: "doc", content: [nodeA] },
+    { },
+    diff,
+    author
+  );
+  const mergedNode = merged.content?.[0] || cloneNode2(nodeB);
+  return { mergedNode, infos, changes };
+}
+function mergeMatchedTable(tableA, tableB, tableIndex, author) {
+  const tableInfos = [];
+  let changeCount = 0;
+  const rowAlignment = alignTableRows(tableA, tableB, [tableIndex - 1], [tableIndex - 1]);
+  const mergedRows = [];
+  const matchedFromA = /* @__PURE__ */ new Map();
+  const matchedFromB = /* @__PURE__ */ new Map();
+  for (const match of rowAlignment.matched) {
+    const idxA = match.pathA[match.pathA.length - 1];
+    const idxB = match.pathB[match.pathB.length - 1];
+    matchedFromA.set(idxA, idxB);
+    matchedFromB.set(idxB, idxA);
+  }
+  const deletedIndices = new Set(rowAlignment.deletions.map((d) => d.path[d.path.length - 1]));
+  const processedDeletions = /* @__PURE__ */ new Set();
+  const rowsA = tableA.content || [];
+  const rowsB = tableB.content || [];
+  for (let idxB = 0; idxB < rowsB.length; idxB++) {
+    const rowB = rowsB[idxB];
+    const matchedIdxA = matchedFromB.get(idxB);
+    if (matchedIdxA !== void 0) {
+      const rowA = rowsA[matchedIdxA];
+      for (let checkIdx = 0; checkIdx < matchedIdxA; checkIdx++) {
+        if (deletedIndices.has(checkIdx) && !processedDeletions.has(checkIdx)) {
+          const deletedRow = rowsA[checkIdx];
+          const changeId = v4();
+          mergedRows.push(markAllTextAsDeleted(cloneNode2(deletedRow), changeId, author));
+          tableInfos.push({
+            id: changeId,
+            type: "rowDelete",
+            nodeType: "tableRow",
+            location: `Table ${tableIndex}, Row ${checkIdx + 1}`,
+            preview: extractTextPreview(deletedRow),
+            author,
+            date: (/* @__PURE__ */ new Date()).toISOString()
+          });
+          processedDeletions.add(checkIdx);
+        }
+      }
+      const { mergedNode, changes } = mergeMatchedBlock(rowA, rowB, idxB, author);
+      mergedRows.push(mergedNode);
+      changeCount += changes;
+    } else {
+      const changeId = v4();
+      mergedRows.push(markAllTextAsInserted(cloneNode2(rowB), changeId, author));
+      tableInfos.push({
+        id: changeId,
+        type: "rowInsert",
+        nodeType: "tableRow",
+        location: `Table ${tableIndex}, Row ${idxB + 1}`,
+        preview: extractTextPreview(rowB),
+        author,
+        date: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  }
+  for (const deletion of rowAlignment.deletions) {
+    const idxA = deletion.path[deletion.path.length - 1];
+    if (!processedDeletions.has(idxA)) {
+      const changeId = v4();
+      mergedRows.push(markAllTextAsDeleted(cloneNode2(deletion.node), changeId, author));
+      tableInfos.push({
+        id: changeId,
+        type: "rowDelete",
+        nodeType: "tableRow",
+        location: `Table ${tableIndex}, Row ${idxA + 1}`,
+        preview: extractTextPreview(deletion.node),
+        author,
+        date: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  }
+  const mergedTable = {
+    ...tableB,
+    content: mergedRows
+  };
+  return { mergedTable, tableInfos, changeCount };
+}
+function mergeMatchedList(listA, listB, listIndex, author) {
+  const listInfos = [];
+  let changeCount = 0;
+  const itemAlignment = alignListItems(listA, listB, [listIndex - 1], [listIndex - 1]);
+  const mergedItems = [];
+  const matchedFromA = /* @__PURE__ */ new Map();
+  const matchedFromB = /* @__PURE__ */ new Map();
+  for (const match of itemAlignment.matched) {
+    const idxA = match.pathA[match.pathA.length - 1];
+    const idxB = match.pathB[match.pathB.length - 1];
+    matchedFromA.set(idxA, idxB);
+    matchedFromB.set(idxB, idxA);
+  }
+  const deletedIndices = new Set(itemAlignment.deletions.map((d) => d.path[d.path.length - 1]));
+  const processedDeletions = /* @__PURE__ */ new Set();
+  const itemsA = listA.content || [];
+  const itemsB = listB.content || [];
+  for (let idxB = 0; idxB < itemsB.length; idxB++) {
+    const itemB = itemsB[idxB];
+    const matchedIdxA = matchedFromB.get(idxB);
+    if (matchedIdxA !== void 0) {
+      const itemA = itemsA[matchedIdxA];
+      for (let checkIdx = 0; checkIdx < matchedIdxA; checkIdx++) {
+        if (deletedIndices.has(checkIdx) && !processedDeletions.has(checkIdx)) {
+          const deletedItem = itemsA[checkIdx];
+          const changeId = v4();
+          mergedItems.push(markAllTextAsDeleted(cloneNode2(deletedItem), changeId, author));
+          listInfos.push({
+            id: changeId,
+            type: "listItemDelete",
+            nodeType: "listItem",
+            location: `List ${listIndex}, Item ${checkIdx + 1}`,
+            preview: extractTextPreview(deletedItem),
+            author,
+            date: (/* @__PURE__ */ new Date()).toISOString()
+          });
+          processedDeletions.add(checkIdx);
+        }
+      }
+      const { mergedNode, changes } = mergeMatchedBlock(itemA, itemB, idxB, author);
+      mergedItems.push(mergedNode);
+      changeCount += changes;
+    } else {
+      const changeId = v4();
+      mergedItems.push(markAllTextAsInserted(cloneNode2(itemB), changeId, author));
+      listInfos.push({
+        id: changeId,
+        type: "listItemInsert",
+        nodeType: "listItem",
+        location: `List ${listIndex}, Item ${idxB + 1}`,
+        preview: extractTextPreview(itemB),
+        author,
+        date: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  }
+  for (const deletion of itemAlignment.deletions) {
+    const idxA = deletion.path[deletion.path.length - 1];
+    if (!processedDeletions.has(idxA)) {
+      const changeId = v4();
+      mergedItems.push(markAllTextAsDeleted(cloneNode2(deletion.node), changeId, author));
+      listInfos.push({
+        id: changeId,
+        type: "listItemDelete",
+        nodeType: "listItem",
+        location: `List ${listIndex}, Item ${idxA + 1}`,
+        preview: extractTextPreview(deletion.node),
+        author,
+        date: (/* @__PURE__ */ new Date()).toISOString()
+      });
+    }
+  }
+  const mergedList = {
+    ...listB,
+    content: mergedItems
+  };
+  return { mergedList, listInfos, changeCount };
+}
+function createInsertedBlock(node, blockIndex, author) {
+  const changeId = v4();
+  const markedNode = markAllTextAsInserted(cloneNode2(node), changeId, author);
+  const nodeDesc = getNodeTypeDescription(node);
+  const info = {
+    id: changeId,
+    type: isTable(node) ? "rowInsert" : isList(node) ? "listItemInsert" : isImage(node) ? "imageInsert" : "paragraphInsert",
+    nodeType: node.type || "unknown",
+    location: `${nodeDesc} inserted at position ${blockIndex}`,
+    preview: extractTextPreview(node),
+    author,
+    date: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  return { markedNode, info };
+}
+function createDeletedBlock(node, blockIndex, author) {
+  const changeId = v4();
+  const markedNode = markAllTextAsDeleted(cloneNode2(node), changeId, author);
+  const nodeDesc = getNodeTypeDescription(node);
+  const info = {
+    id: changeId,
+    type: isTable(node) ? "rowDelete" : isList(node) ? "listItemDelete" : isImage(node) ? "imageDelete" : "paragraphDelete",
+    nodeType: node.type || "unknown",
+    location: `${nodeDesc} deleted from position ${blockIndex}`,
+    preview: extractTextPreview(node),
+    author,
+    date: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  return { markedNode, info };
 }
 var permissionResolver = ({ permission }) => {
   return TRACK_CHANGE_PERMISSIONS.includes(permission) ? true : void 0;
@@ -2595,10 +2763,16 @@ var DocxDiffEditor = forwardRef(
               }
               newJson = content;
             }
+            const structuralResult = mergeWithStructuralAwareness(
+              sourceJson,
+              newJson,
+              author
+            );
+            const merged = structuralResult.mergedDoc;
+            const structInfos = structuralResult.structuralInfos;
+            setMergedJson(merged);
             const diff = diffDocuments(sourceJson, newJson);
             setDiffResult(diff);
-            const merged = mergeDocuments(sourceJson, newJson, diff, author);
-            setMergedJson(merged);
             if (superdocRef.current?.activeEditor) {
               setEditorContent(superdocRef.current.activeEditor, merged);
               enableReviewMode(superdocRef.current);
@@ -2619,19 +2793,16 @@ var DocxDiffEditor = forwardRef(
                 }, 50);
               }
             }
-            const { changes: structChanges, infos: structInfos } = processStructuralChanges(
-              sourceJson,
-              newJson,
-              author
-            );
             setStructuralChanges(structInfos);
             setIsPaneDismissed(false);
             const insertions = diff.segments.filter((s) => s.type === "insert").length;
             const deletions = diff.segments.filter((s) => s.type === "delete").length;
             const formatChanges = diff.formatChanges?.length || 0;
             const structuralChangeCount = structInfos.length;
-            const structuralSummary = generateStructuralChangeSummary(structInfos);
-            const combinedSummary = [...diff.summary, ...structuralSummary];
+            const combinedSummary = [...structuralResult.summary];
+            if (diff.summary.length > 0 && structuralResult.summary.length === 0) {
+              combinedSummary.push(...diff.summary);
+            }
             const result = {
               totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
               insertions,
@@ -3025,6 +3196,254 @@ var DocxDiffEditor_default = DocxDiffEditor;
 
 // src/services/index.ts
 init_nodeFingerprint();
+function markAllTextAsInserted2(node, sharedId, author) {
+  if (node.type === "text") {
+    return {
+      ...node,
+      marks: [...node.marks || [], createTrackInsertMark(author, sharedId)]
+    };
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map(
+        (child) => markAllTextAsInserted2(child, sharedId, author)
+      )
+    };
+  }
+  return node;
+}
+function markAllTextAsDeleted2(node, sharedId, author) {
+  if (node.type === "text") {
+    return {
+      ...node,
+      marks: [...node.marks || [], createTrackDeleteMark(author, sharedId)]
+    };
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map(
+        (child) => markAllTextAsDeleted2(child, sharedId, author)
+      )
+    };
+  }
+  return node;
+}
+function cloneNode3(node) {
+  return JSON.parse(JSON.stringify(node));
+}
+function extractTextPreview2(node, maxLength = 50) {
+  const texts = [];
+  function extract(n) {
+    if (n.type === "text") {
+      texts.push(n.text || "");
+    }
+    if (n.content) {
+      for (const child of n.content) {
+        extract(child);
+      }
+    }
+  }
+  extract(node);
+  const text = texts.join("").trim();
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength - 3) + "...";
+  }
+  return text || "(empty)";
+}
+function processStructuralChanges(docA, docB, author = DEFAULT_AUTHOR) {
+  const changes = [];
+  const infos = [];
+  const alignment = alignDocuments(docA, docB);
+  let tableIndex = 0;
+  let listIndex = 0;
+  let paragraphIndex = 0;
+  for (const inserted of alignment.insertions) {
+    const node = inserted.node;
+    const sharedId = v4();
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    let type = "paragraphInsert";
+    let location = "";
+    let preview = "";
+    if (isTable(node)) {
+      type = "rowInsert";
+      location = `New table at position ${inserted.path[0] + 1}`;
+      preview = `Table with ${node.content?.length || 0} rows`;
+      tableIndex++;
+    } else if (isList(node)) {
+      type = "listItemInsert";
+      location = `New list at position ${inserted.path[0] + 1}`;
+      preview = `List with ${node.content?.length || 0} items`;
+      listIndex++;
+    } else {
+      type = "paragraphInsert";
+      paragraphIndex++;
+      location = `Paragraph ${paragraphIndex}`;
+      preview = extractTextPreview2(node);
+    }
+    changes.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      path: inserted.path,
+      node: markAllTextAsInserted2(cloneNode3(node), sharedId, author)
+    });
+    infos.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      location,
+      preview,
+      author,
+      date
+    });
+  }
+  for (const deleted of alignment.deletions) {
+    const node = deleted.node;
+    const sharedId = v4();
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    let type = "paragraphDelete";
+    let location = "";
+    let preview = "";
+    if (isTable(node)) {
+      type = "rowDelete";
+      location = `Deleted table at position ${deleted.path[0] + 1}`;
+      preview = `Table with ${node.content?.length || 0} rows`;
+    } else if (isList(node)) {
+      type = "listItemDelete";
+      location = `Deleted list at position ${deleted.path[0] + 1}`;
+      preview = `List with ${node.content?.length || 0} items`;
+    } else {
+      type = "paragraphDelete";
+      location = `Deleted paragraph`;
+      preview = extractTextPreview2(node);
+    }
+    changes.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      path: deleted.path,
+      node: markAllTextAsDeleted2(cloneNode3(node), sharedId, author)
+    });
+    infos.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      location,
+      preview,
+      author,
+      date
+    });
+  }
+  for (const match of alignment.matched) {
+    const nodeA = docA.content?.[match.pathA[0]];
+    const nodeB = docB.content?.[match.pathB[0]];
+    if (!nodeA || !nodeB) continue;
+    if (isTable(nodeA) && isTable(nodeB)) {
+      tableIndex++;
+      const tableResult = diffTables(nodeA, nodeB, match.pathA, match.pathB);
+      for (const rowChange of tableResult.rowChanges) {
+        const sharedId = rowChange.id;
+        const date = (/* @__PURE__ */ new Date()).toISOString();
+        const rowIndex = rowChange.path[rowChange.path.length - 1];
+        const isInsert = rowChange.type === "rowInsert";
+        const location = getRowLocation(rowChange.path, rowIndex, tableIndex - 1);
+        const preview = getRowPreview(rowChange.node);
+        const markedNode = isInsert ? markAllTextAsInserted2(cloneNode3(rowChange.node), sharedId, author) : markAllTextAsDeleted2(cloneNode3(rowChange.node), sharedId, author);
+        changes.push({
+          ...rowChange,
+          node: markedNode
+        });
+        infos.push({
+          id: sharedId,
+          type: rowChange.type,
+          nodeType: "tableRow",
+          location,
+          preview,
+          author,
+          date
+        });
+      }
+    }
+    if (isList(nodeA) && isList(nodeB)) {
+      listIndex++;
+      const listResult = diffLists(nodeA, nodeB, match.pathA, match.pathB);
+      for (const itemChange of listResult.itemChanges) {
+        const sharedId = itemChange.id;
+        const date = (/* @__PURE__ */ new Date()).toISOString();
+        const itemIndex = itemChange.path[itemChange.path.length - 1];
+        const isInsert = itemChange.type === "listItemInsert";
+        const location = getListItemLocation(itemChange.path, itemIndex, listIndex - 1);
+        const preview = getListItemPreview(itemChange.node);
+        const markedNode = isInsert ? markAllTextAsInserted2(cloneNode3(itemChange.node), sharedId, author) : markAllTextAsDeleted2(cloneNode3(itemChange.node), sharedId, author);
+        changes.push({
+          ...itemChange,
+          node: markedNode
+        });
+        infos.push({
+          id: sharedId,
+          type: itemChange.type,
+          nodeType: "listItem",
+          location,
+          preview,
+          author,
+          date
+        });
+      }
+    }
+  }
+  const imageChanges = diffImages(docA, docB);
+  for (const imgInsert of imageChanges.inserted) {
+    const sharedId = imgInsert.id;
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    infos.push({
+      id: sharedId,
+      type: "imageInsert",
+      nodeType: "image",
+      location: getImageLocation(imgInsert.path),
+      preview: getImagePreview(imgInsert.node),
+      author,
+      date
+    });
+    changes.push(imgInsert);
+  }
+  for (const imgDelete of imageChanges.deleted) {
+    const sharedId = imgDelete.id;
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    infos.push({
+      id: sharedId,
+      type: "imageDelete",
+      nodeType: "image",
+      location: getImageLocation(imgDelete.path),
+      preview: getImagePreview(imgDelete.node),
+      author,
+      date
+    });
+    changes.push(imgDelete);
+  }
+  return { changes, infos };
+}
+function generateStructuralChangeSummary(infos) {
+  const summary = [];
+  const rowInserts = infos.filter((i) => i.type === "rowInsert").length;
+  const rowDeletes = infos.filter((i) => i.type === "rowDelete").length;
+  const paragraphInserts = infos.filter((i) => i.type === "paragraphInsert").length;
+  const paragraphDeletes = infos.filter((i) => i.type === "paragraphDelete").length;
+  const listItemInserts = infos.filter((i) => i.type === "listItemInsert").length;
+  const listItemDeletes = infos.filter((i) => i.type === "listItemDelete").length;
+  const imageInserts = infos.filter((i) => i.type === "imageInsert").length;
+  const imageDeletes = infos.filter((i) => i.type === "imageDelete").length;
+  if (rowInserts > 0) summary.push(`${rowInserts} row(s) inserted`);
+  if (rowDeletes > 0) summary.push(`${rowDeletes} row(s) deleted`);
+  if (paragraphInserts > 0) summary.push(`${paragraphInserts} paragraph(s) inserted`);
+  if (paragraphDeletes > 0) summary.push(`${paragraphDeletes} paragraph(s) deleted`);
+  if (listItemInserts > 0) summary.push(`${listItemInserts} list item(s) inserted`);
+  if (listItemDeletes > 0) summary.push(`${listItemDeletes} list item(s) deleted`);
+  if (imageInserts > 0) summary.push(`${imageInserts} image(s) inserted`);
+  if (imageDeletes > 0) summary.push(`${imageDeletes} image(s) deleted`);
+  return summary;
+}
 
 // src/blankTemplate.ts
 var BLANK_DOCX_BASE64 = `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`;

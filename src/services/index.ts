@@ -107,3 +107,8 @@ export {
 } from './blockLevelMerger';
 
 export type { BlockMergeResult } from './blockLevelMerger';
+
+// Structural merger (Phase 6b - structure-aware merge)
+export { mergeWithStructuralAwareness } from './structuralMerger';
+
+export type { StructuralMergeResult } from './structuralMerger';

@@ -37,6 +37,7 @@ import { diffDocuments } from './services/documentDiffer';
 import { mergeDocuments } from './services/mergeDocuments';
 import { extractEnrichedChanges } from './services/changeContextExtractor';
 import { processStructuralChanges, generateStructuralChangeSummary } from './services/blockLevelMerger';
+import { mergeWithStructuralAwareness } from './services/structuralMerger';
 import { DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, TRACK_CHANGE_PERMISSIONS, TIMEOUTS } from './constants';
 
 /**
@@ -669,13 +670,30 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               newJson = content as ProseMirrorJSON;
             }
 
-            // Diff the documents
+            // =========================================================
+            // STRUCTURAL MERGE (Phase 6b)
+            // Instead of character-level-only merge, we now use the
+            // structure-aware merger which:
+            // 1. Aligns blocks first (tables, lists, paragraphs)
+            // 2. Inserts/deletes entire blocks with track marks
+            // 3. Applies character-level diff within matched blocks
+            // =========================================================
+            
+            // Use structural merger for the main merge
+            const structuralResult = mergeWithStructuralAwareness(
+              sourceJson,
+              newJson,
+              author
+            );
+            
+            const merged = structuralResult.mergedDoc;
+            const structInfos = structuralResult.structuralInfos;
+            
+            setMergedJson(merged);
+            
+            // Also keep the text-level diff for getDiffSegments() backward compat
             const diff = diffDocuments(sourceJson, newJson);
             setDiffResult(diff);
-
-            // Merge with track changes
-            const merged = mergeDocuments(sourceJson, newJson, diff, author);
-            setMergedJson(merged);
 
             // Update editor with merged content and enable review mode
             if (superdocRef.current?.activeEditor) {
@@ -714,26 +732,24 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               }
             }
 
-            // Process structural changes (tables, lists, images)
-            const { changes: structChanges, infos: structInfos } = processStructuralChanges(
-              sourceJson,
-              newJson,
-              author
-            );
-
             // Store structural changes for the pane
             setStructuralChanges(structInfos);
             setIsPaneDismissed(false); // Reset dismissed state on new comparison
 
             // Build result
+            // Note: insertions/deletions from text diff for backward compat,
+            // but structuralChanges now contains the actual block changes
             const insertions = diff.segments.filter((s) => s.type === 'insert').length;
             const deletions = diff.segments.filter((s) => s.type === 'delete').length;
             const formatChanges = diff.formatChanges?.length || 0;
             const structuralChangeCount = structInfos.length;
 
             // Combine summaries
-            const structuralSummary = generateStructuralChangeSummary(structInfos);
-            const combinedSummary = [...diff.summary, ...structuralSummary];
+            const combinedSummary = [...structuralResult.summary];
+            if (diff.summary.length > 0 && structuralResult.summary.length === 0) {
+              // Only add text-level summary if no structural changes
+              combinedSummary.push(...diff.summary);
+            }
 
             const result: ComparisonResult = {
               totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
