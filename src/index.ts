@@ -7,6 +7,9 @@
 // Main component
 export { DocxDiffEditor, default } from './DocxDiffEditor';
 
+// Sub-components
+export { StructuralChangesPane } from './components';
+
 // Types
 export type {
   // Component types
@@ -14,6 +17,7 @@ export type {
   DocxDiffEditorRef,
   DocxContent,
   ComparisonResult,
+  StructuralPanePosition,
 
   // ProseMirror types
   ProseMirrorJSON,
@@ -24,6 +28,16 @@ export type {
   DiffSegment,
   DiffResult,
   FormatChange,
+
+  // Block-level diff types
+  StructuralChange,
+  StructuralChangeType,
+  StructuralChangeInfo,
+  AttributeChange,
+  AttrDiff,
+  HybridDiffResult,
+  NodeMatch,
+  FingerprintedNode,
 
   // Enriched change types (for LLM)
   EnrichedChange,
@@ -60,6 +74,26 @@ export {
 
   // Change extraction
   extractEnrichedChanges,
+  extractEnrichedChangesWithStructural,
+
+  // Block-level diffing
+  generateFingerprint,
+  alignDocuments,
+  processStructuralChanges,
+  generateStructuralChangeSummary,
+
+  // Table diffing
+  diffTables,
+  isTable,
+
+  // List diffing
+  diffLists,
+  isList,
+
+  // Image/non-text diffing
+  diffImages,
+  isImage,
+  isAtomicNode,
 } from './services';
 
 // Constants (for customization)

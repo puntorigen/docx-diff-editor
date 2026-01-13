@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.41] - 2026-01-13
+
+### Added
+
+- **Block-Level Diffing**: Complete structural change detection for tables, lists, and images. The component now detects:
+  - Table row insertions/deletions
+  - Table column changes
+  - List item insertions/deletions (with nested list support)
+  - Image insertions/deletions
+  - Paragraph insertions/deletions
+
+- **Structural Changes Pane**: New floating, collapsible panel that displays structural changes with Accept/Reject controls. Features include:
+  - Positioned panel (4 position options: `top-right`, `bottom-right`, `top-left`, `bottom-left`)
+  - Collapse/expand animation
+  - Per-change Accept/Reject buttons
+  - Accept All / Reject All bulk actions
+  - Change counter badge
+  - Auto-hide when no changes remain
+  - Click to navigate to change
+
+- **New Props for Pane Customization**:
+  - `structuralPanePosition`: Position of the pane (`'bottom-right'` default)
+  - `structuralPaneCollapsed`: Start with pane collapsed
+  - `hideStructuralPane`: Hide the pane entirely
+
+- **Bubble Sync**: When users accept/reject changes via SuperDoc's native bubbles, the Structural Changes Pane automatically syncs (using `onCommentsUpdate` callback).
+
+- **Enhanced Context Extraction**: `getEnrichedChangesContext()` now includes table/list coordinates in location info, and structural change metadata.
+
+- **New Services & Types Exported**:
+  - `StructuralChangesPane` component
+  - `generateFingerprint`, `alignDocuments`, `processStructuralChanges`
+  - `diffTables`, `diffLists`, `diffImages`
+  - Types: `StructuralChange`, `StructuralChangeInfo`, `HybridDiffResult`, `AttributeChange`, `AttrDiff`
+
+### Changed
+
+- `ComparisonResult` now includes `structuralChanges` count and `structuralChangeInfos` array
+- `EnrichedChange` now includes `structuralType`, `tablePosition`, and `listPosition` fields
+- `ChangeLocation` now includes `tableCoords`, `listIndex`, and `listDepth` fields
+
 ## [1.0.40] - 2026-01-12
 
 ### Fixed

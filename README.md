@@ -6,8 +6,10 @@ A React component for DOCX document comparison with track changes visualization.
 
 - 📄 Compare two DOCX documents side by side
 - 🔍 Character-level diff with track changes
+- 📊 **Block-level diffing** for tables, lists, and images
 - ✅ Accept/reject individual changes
 - 🎨 Visual track changes (insert, delete, format)
+- 📋 **Structural Changes Pane** for table rows, list items, images
 - 🤖 Extract enriched change context for LLM processing
 - 📤 Export merged document to DOCX
 
@@ -103,6 +105,9 @@ await editor.setSource({ type: 'doc', content: [...] });
 | `className` | `string` | - | Container class |
 | `toolbarClassName` | `string` | - | Toolbar container class |
 | `editorClassName` | `string` | - | Editor container class |
+| `structuralPanePosition` | `StructuralPanePosition` | `'bottom-right'` | Position of structural changes pane |
+| `structuralPaneCollapsed` | `boolean` | `false` | Start with pane collapsed |
+| `hideStructuralPane` | `boolean` | `false` | Hide structural changes pane entirely |
 
 ### Ref Methods
 
@@ -155,8 +160,10 @@ interface ComparisonResult {
   insertions: number;
   deletions: number;
   formatChanges: number;
+  structuralChanges: number;          // New: count of structural changes
   summary: string[];
   mergedJson: ProseMirrorJSON;
+  structuralChangeInfos: StructuralChangeInfo[];  // New: metadata for pane
 }
 ```
 
@@ -280,6 +287,54 @@ The component supports three types of track changes:
 | **Insert** | Green underline | New text added |
 | **Delete** | Red strikethrough | Text removed |
 | **Format** | Gold highlight | Formatting changed |
+
+## Structural Changes Pane
+
+When comparing documents with structural differences (tables, lists, images), a floating pane appears showing these changes with Accept/Reject controls.
+
+### What's Detected
+
+| Change Type | Description |
+|-------------|-------------|
+| **Table Rows** | Inserted or deleted rows |
+| **Table Columns** | Added or removed columns |
+| **List Items** | New or removed list items (including nested) |
+| **Paragraphs** | Entire paragraphs added or deleted |
+| **Images** | New or removed images |
+
+### Pane Features
+
+- **Floating Position**: Configurable position (`top-right`, `bottom-right`, `top-left`, `bottom-left`)
+- **Collapsible**: Click header to minimize to just the title bar
+- **Accept/Reject**: Per-change or bulk actions
+- **Counter Badge**: Shows remaining changes
+- **Auto-Hide**: Disappears when all changes are resolved
+- **Bubble Sync**: Stays in sync when changes are accepted via SuperDoc's bubbles
+
+### Configuration
+
+```tsx
+<DocxDiffEditor
+  ref={editorRef}
+  structuralPanePosition="bottom-right"  // Position of the pane
+  structuralPaneCollapsed={false}         // Start expanded
+  hideStructuralPane={false}              // Show the pane
+/>
+```
+
+### Accessing Structural Changes Programmatically
+
+```tsx
+const result = await editorRef.current?.compareWith(newDocument);
+
+// Get structural change count
+console.log(`${result.structuralChanges} structural changes detected`);
+
+// Access detailed info
+result.structuralChangeInfos.forEach(change => {
+  console.log(`${change.type}: ${change.location} - ${change.preview}`);
+});
+```
 
 ## License
 

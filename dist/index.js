@@ -3,15 +3,430 @@
 Object.defineProperty(exports, '__esModule', { value: true });
 
 var react = require('react');
+var jsxRuntime = require('react/jsx-runtime');
 var DiffMatchPatch = require('diff-match-patch');
 var uuid = require('uuid');
-var jsxRuntime = require('react/jsx-runtime');
 
 function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
 
 var DiffMatchPatch__default = /*#__PURE__*/_interopDefault(DiffMatchPatch);
 
-// src/DocxDiffEditor.tsx
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/services/nodeFingerprint.ts
+var nodeFingerprint_exports = {};
+__export(nodeFingerprint_exports, {
+  buildFingerprintTree: () => buildFingerprintTree,
+  calculateSimilarity: () => calculateSimilarity,
+  calculateTextSimilarity: () => calculateTextSimilarity,
+  extractBlockFingerprints: () => extractBlockFingerprints,
+  generateFingerprint: () => generateFingerprint,
+  getNodeTextSimilarity: () => getNodeTextSimilarity
+});
+function extractTextContent2(node) {
+  if (!node) return "";
+  if (node.type === "text" && node.text) {
+    return node.text;
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return node.content.map(extractTextContent2).join("");
+  }
+  return "";
+}
+function simpleHash(str) {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) + hash ^ str.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
+}
+function normalizeText(text) {
+  return text.toLowerCase().replace(/\s+/g, " ").trim();
+}
+function generateFingerprint(node) {
+  if (!node) return "";
+  const type = node.type || "unknown";
+  switch (type) {
+    case "text": {
+      const text = normalizeText(node.text || "");
+      return `t:${simpleHash(text)}`;
+    }
+    case "paragraph": {
+      const text = normalizeText(extractTextContent2(node));
+      return `p:${simpleHash(text)}`;
+    }
+    case "heading": {
+      const level = node.attrs?.level || 1;
+      const text = normalizeText(extractTextContent2(node));
+      return `h${level}:${simpleHash(text)}`;
+    }
+    case "table": {
+      const rowCount = node.content?.length || 0;
+      const childFps = (node.content || []).map((child) => generateFingerprint(child)).join("|");
+      return `table:${rowCount}:${simpleHash(childFps)}`;
+    }
+    case "tableRow": {
+      const cellCount = node.content?.length || 0;
+      const childFps = (node.content || []).map((child) => generateFingerprint(child)).join("|");
+      return `tr:${cellCount}:${simpleHash(childFps)}`;
+    }
+    case "tableCell":
+    case "tableHeader": {
+      const text = normalizeText(extractTextContent2(node));
+      return `tc:${simpleHash(text)}`;
+    }
+    case "bulletList":
+    case "orderedList": {
+      const itemCount = node.content?.length || 0;
+      const childFps = (node.content || []).map((child) => generateFingerprint(child)).join("|");
+      return `list:${itemCount}:${simpleHash(childFps)}`;
+    }
+    case "listItem": {
+      const text = normalizeText(extractTextContent2(node));
+      return `li:${simpleHash(text)}`;
+    }
+    case "image": {
+      const src = node.attrs?.src || "";
+      return `img:${simpleHash(src)}`;
+    }
+    case "hardBreak":
+      return "br";
+    case "horizontalRule":
+      return "hr";
+    case "codeBlock": {
+      const text = normalizeText(extractTextContent2(node));
+      const lang = node.attrs?.language || "";
+      return `code:${lang}:${simpleHash(text)}`;
+    }
+    case "blockquote": {
+      const text = normalizeText(extractTextContent2(node));
+      return `bq:${simpleHash(text)}`;
+    }
+    // For doc and other container types, fingerprint based on content
+    case "doc": {
+      const childFps = (node.content || []).map((child) => generateFingerprint(child)).join("|");
+      return `doc:${simpleHash(childFps)}`;
+    }
+    // Default: use type and text content
+    default: {
+      const text = normalizeText(extractTextContent2(node));
+      return `${type}:${simpleHash(text)}`;
+    }
+  }
+}
+function buildFingerprintTree(node, path = []) {
+  const fingerprint = generateFingerprint(node);
+  const result = {
+    node,
+    fingerprint,
+    path: [...path]
+  };
+  if (node.content && Array.isArray(node.content)) {
+    result.children = node.content.map(
+      (child, index) => buildFingerprintTree(child, [...path, index])
+    );
+  }
+  return result;
+}
+function extractBlockFingerprints(doc) {
+  if (!doc || !doc.content || !Array.isArray(doc.content)) {
+    return [];
+  }
+  return doc.content.map((child, index) => ({
+    node: child,
+    fingerprint: generateFingerprint(child),
+    path: [index]
+  }));
+}
+function calculateSimilarity(fpA, fpB) {
+  if (fpA === fpB) return 1;
+  const typeA = fpA.split(":")[0];
+  const typeB = fpB.split(":")[0];
+  if (typeA !== typeB) return 0;
+  return 0.3;
+}
+function calculateTextSimilarity(textA, textB) {
+  const a = normalizeText(textA);
+  const b = normalizeText(textB);
+  if (a === b) return 1;
+  if (a.length === 0 || b.length === 0) return 0;
+  const lenRatio = Math.min(a.length, b.length) / Math.max(a.length, b.length);
+  if (lenRatio < 0.3) return lenRatio;
+  const distance = levenshteinDistance(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  return 1 - distance / maxLen;
+}
+function levenshteinDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+  let prevRow = Array.from({ length: b.length + 1 }, (_, i) => i);
+  let currRow = new Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    currRow[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      currRow[j] = Math.min(
+        prevRow[j] + 1,
+        // deletion
+        currRow[j - 1] + 1,
+        // insertion
+        prevRow[j - 1] + cost
+        // substitution
+      );
+    }
+    [prevRow, currRow] = [currRow, prevRow];
+  }
+  return prevRow[b.length];
+}
+function getNodeTextSimilarity(nodeA, nodeB) {
+  const textA = extractTextContent2(nodeA);
+  const textB = extractTextContent2(nodeB);
+  return calculateTextSimilarity(textA, textB);
+}
+var init_nodeFingerprint = __esm({
+  "src/services/nodeFingerprint.ts"() {
+  }
+});
+function getChangeIcon(type) {
+  switch (type) {
+    case "rowInsert":
+    case "columnInsert":
+    case "paragraphInsert":
+    case "listItemInsert":
+    case "imageInsert":
+      return "\u2795";
+    case "rowDelete":
+    case "columnDelete":
+    case "paragraphDelete":
+    case "listItemDelete":
+    case "imageDelete":
+      return "\u2796";
+    case "attrChange":
+      return "\u270F\uFE0F";
+    default:
+      return "\u2022";
+  }
+}
+function getChangeLabel(type) {
+  switch (type) {
+    case "rowInsert":
+      return "Row inserted";
+    case "rowDelete":
+      return "Row deleted";
+    case "columnInsert":
+      return "Column inserted";
+    case "columnDelete":
+      return "Column deleted";
+    case "paragraphInsert":
+      return "Paragraph inserted";
+    case "paragraphDelete":
+      return "Paragraph deleted";
+    case "listItemInsert":
+      return "List item inserted";
+    case "listItemDelete":
+      return "List item deleted";
+    case "imageInsert":
+      return "Image inserted";
+    case "imageDelete":
+      return "Image deleted";
+    case "attrChange":
+      return "Formatting changed";
+    default:
+      return "Change";
+  }
+}
+function formatDate(isoDate) {
+  try {
+    const date = new Date(isoDate);
+    return date.toLocaleDateString(void 0, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  } catch {
+    return "";
+  }
+}
+var StructuralChangesPane = ({
+  changes,
+  position = "bottom-right",
+  initiallyCollapsed = false,
+  onAccept,
+  onReject,
+  onAcceptAll,
+  onRejectAll,
+  onNavigate,
+  onDismiss
+}) => {
+  const [isCollapsed, setIsCollapsed] = react.useState(initiallyCollapsed);
+  const [isVisible, setIsVisible] = react.useState(true);
+  const [isAnimatingOut, setIsAnimatingOut] = react.useState(false);
+  react.useEffect(() => {
+    if (changes.length === 0) {
+      setIsAnimatingOut(true);
+      const timer = setTimeout(() => setIsVisible(false), 300);
+      return () => clearTimeout(timer);
+    } else {
+      setIsVisible(true);
+      setIsAnimatingOut(false);
+    }
+  }, [changes.length]);
+  const handleDismiss = react.useCallback(() => {
+    setIsAnimatingOut(true);
+    setTimeout(() => {
+      setIsVisible(false);
+      onDismiss?.();
+    }, 300);
+  }, [onDismiss]);
+  const handleToggleCollapse = react.useCallback(() => {
+    setIsCollapsed((prev) => !prev);
+  }, []);
+  const handleAccept = react.useCallback((e, changeId) => {
+    e.stopPropagation();
+    onAccept(changeId);
+  }, [onAccept]);
+  const handleReject = react.useCallback((e, changeId) => {
+    e.stopPropagation();
+    onReject(changeId);
+  }, [onReject]);
+  const handleNavigate = react.useCallback((changeId) => {
+    onNavigate?.(changeId);
+  }, [onNavigate]);
+  if (!isVisible) return null;
+  const positionClasses = {
+    "top-right": "dde-pane--top-right",
+    "bottom-right": "dde-pane--bottom-right",
+    "top-left": "dde-pane--top-left",
+    "bottom-left": "dde-pane--bottom-left"
+  };
+  return /* @__PURE__ */ jsxRuntime.jsxs(
+    "div",
+    {
+      className: `dde-structural-pane ${positionClasses[position]} ${isAnimatingOut ? "dde-pane--animating-out" : ""} ${isCollapsed ? "dde-pane--collapsed" : ""}`,
+      role: "region",
+      "aria-label": "Structural Changes",
+      children: [
+        /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__header", onClick: handleToggleCollapse, children: [
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__title", children: [
+            /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__icon", children: "\u{1F4CB}" }),
+            /* @__PURE__ */ jsxRuntime.jsxs("span", { className: "dde-pane__label", children: [
+              "Structural Changes",
+              /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__count", children: changes.length })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__controls", children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                className: "dde-pane__btn dde-pane__btn--collapse",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  handleToggleCollapse();
+                },
+                "aria-label": isCollapsed ? "Expand" : "Collapse",
+                title: isCollapsed ? "Expand" : "Collapse",
+                children: isCollapsed ? "+" : "\u2212"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                className: "dde-pane__btn dde-pane__btn--close",
+                onClick: (e) => {
+                  e.stopPropagation();
+                  handleDismiss();
+                },
+                "aria-label": "Close",
+                title: "Close",
+                children: "\xD7"
+              }
+            )
+          ] })
+        ] }),
+        !isCollapsed && /* @__PURE__ */ jsxRuntime.jsxs(jsxRuntime.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntime.jsx("div", { className: "dde-pane__body", children: changes.length === 0 ? /* @__PURE__ */ jsxRuntime.jsx("div", { className: "dde-pane__empty", children: "No structural changes" }) : /* @__PURE__ */ jsxRuntime.jsx("ul", { className: "dde-pane__list", children: changes.map((change) => /* @__PURE__ */ jsxRuntime.jsxs(
+            "li",
+            {
+              className: "dde-pane__item",
+              onClick: () => handleNavigate(change.id),
+              children: [
+                /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__item-header", children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__item-icon", children: getChangeIcon(change.type) }),
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__item-label", children: getChangeLabel(change.type) })
+                ] }),
+                /* @__PURE__ */ jsxRuntime.jsx("div", { className: "dde-pane__item-location", children: change.location }),
+                /* @__PURE__ */ jsxRuntime.jsx("div", { className: "dde-pane__item-preview", children: change.preview }),
+                /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__item-meta", children: [
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__item-author", children: change.author.name }),
+                  /* @__PURE__ */ jsxRuntime.jsx("span", { className: "dde-pane__item-date", children: formatDate(change.date) })
+                ] }),
+                /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__item-actions", children: [
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    "button",
+                    {
+                      className: "dde-pane__action dde-pane__action--accept",
+                      onClick: (e) => handleAccept(e, change.id),
+                      title: "Accept change",
+                      children: "Accept"
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntime.jsx(
+                    "button",
+                    {
+                      className: "dde-pane__action dde-pane__action--reject",
+                      onClick: (e) => handleReject(e, change.id),
+                      title: "Reject change",
+                      children: "Reject"
+                    }
+                  )
+                ] })
+              ]
+            },
+            change.id
+          )) }) }),
+          changes.length > 0 && /* @__PURE__ */ jsxRuntime.jsxs("div", { className: "dde-pane__footer", children: [
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                className: "dde-pane__bulk-btn dde-pane__bulk-btn--accept",
+                onClick: onAcceptAll,
+                children: "Accept All"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntime.jsx(
+              "button",
+              {
+                className: "dde-pane__bulk-btn dde-pane__bulk-btn--reject",
+                onClick: onRejectAll,
+                children: "Reject All"
+              }
+            )
+          ] })
+        ] })
+      ]
+    }
+  );
+};
 
 // src/constants.ts
 var DEFAULT_AUTHOR = {
@@ -501,10 +916,54 @@ function extractEnrichedChanges(mergedJson) {
   const context = {
     currentSection: null,
     currentParagraphText: "",
-    currentNodeType: "unknown"
+    currentNodeType: "unknown",
+    tableIndex: 0,
+    listIndex: 0,
+    listDepth: 0
   };
   traverseDocument(mergedJson, context, changes);
   return groupReplacements(changes);
+}
+function extractEnrichedChangesWithStructural(mergedJson, structuralInfos) {
+  const textChanges = extractEnrichedChanges(mergedJson);
+  const structuralChanges = structuralInfos.map((info) => {
+    const location = buildLocationFromStructural(info);
+    return {
+      type: info.type.includes("Insert") ? "insertion" : "deletion",
+      text: info.preview,
+      location,
+      surroundingText: info.preview,
+      structuralType: info.type,
+      charCount: info.preview.length
+    };
+  });
+  return [...structuralChanges, ...textChanges];
+}
+function buildLocationFromStructural(info) {
+  const nodeType = mapNodeTypeToLocation(info.nodeType);
+  return {
+    nodeType,
+    description: info.location,
+    sectionTitle: void 0
+  };
+}
+function mapNodeTypeToLocation(nodeType) {
+  switch (nodeType) {
+    case "tableRow":
+    case "tableCell":
+    case "table":
+      return "table";
+    case "listItem":
+      return "listItem";
+    case "paragraph":
+      return "paragraph";
+    case "heading":
+      return "heading";
+    case "image":
+      return "image";
+    default:
+      return "unknown";
+  }
 }
 function traverseDocument(node, context, changes) {
   if (!node) return;
@@ -519,9 +978,21 @@ function traverseDocument(node, context, changes) {
   } else if (node.type === "listItem") {
     context.currentNodeType = "listItem";
     context.currentParagraphText = extractAllText(node);
-  } else if (node.type === "tableCell") {
+    context.listItemIndex = (context.listItemIndex || 0) + 1;
+  } else if (node.type === "tableCell" || node.type === "tableHeader") {
     context.currentNodeType = "tableCell";
     context.currentParagraphText = extractAllText(node);
+    context.cellIndex = (context.cellIndex || 0) + 1;
+  } else if (node.type === "tableRow") {
+    context.rowIndex = (context.rowIndex || 0) + 1;
+    context.cellIndex = 0;
+  } else if (node.type === "table") {
+    context.tableIndex = (context.tableIndex || 0) + 1;
+    context.rowIndex = 0;
+  } else if (node.type === "bulletList" || node.type === "orderedList") {
+    context.listIndex = (context.listIndex || 0) + 1;
+    context.listItemIndex = 0;
+    context.listDepth = (context.listDepth || 0) + 1;
   }
   if (node.type === "text" && node.marks) {
     const trackMark = findTrackChangeMark(node.marks);
@@ -534,6 +1005,9 @@ function traverseDocument(node, context, changes) {
     for (const child of node.content) {
       traverseDocument(child, context, changes);
     }
+  }
+  if (node.type === "bulletList" || node.type === "orderedList") {
+    context.listDepth = Math.max(0, (context.listDepth || 1) - 1);
   }
 }
 function extractAllText(node) {
@@ -555,13 +1029,17 @@ function createEnrichedChange(node, trackMark, context) {
   const text = node.text || "";
   const location = buildLocation(context);
   const surroundingText = extractSurroundingSentence(text, context.currentParagraphText);
+  const tablePosition = context.currentNodeType === "tableCell" && context.rowIndex !== void 0 ? { row: context.rowIndex, column: context.cellIndex || 0 } : void 0;
+  const listPosition = context.currentNodeType === "listItem" && context.listItemIndex !== void 0 ? { index: context.listItemIndex, depth: context.listDepth || 0 } : void 0;
   if (trackMark.type === "trackInsert") {
     return {
       type: "insertion",
       text,
       location,
       surroundingText,
-      charCount: text.length
+      charCount: text.length,
+      tablePosition,
+      listPosition
     };
   }
   if (trackMark.type === "trackDelete") {
@@ -570,7 +1048,9 @@ function createEnrichedChange(node, trackMark, context) {
       text,
       location,
       surroundingText,
-      charCount: text.length
+      charCount: text.length,
+      tablePosition,
+      listPosition
     };
   }
   if (trackMark.type === "trackFormat") {
@@ -585,7 +1065,9 @@ function createEnrichedChange(node, trackMark, context) {
         added: after.map((m) => m.type).filter((t) => !before.some((b) => b.type === t)),
         removed: before.map((m) => m.type).filter((t) => !after.some((a) => a.type === t))
       },
-      charCount: text.length
+      charCount: text.length,
+      tablePosition,
+      listPosition
     };
   }
   return null;
@@ -640,16 +1122,26 @@ function buildLocation(context) {
   let description;
   if (nodeType === "heading") {
     description = context.headingLevel === 1 ? "document title" : "section heading";
+  } else if (nodeType === "tableCell" && context.tableIndex !== void 0) {
+    const colLetter = String.fromCharCode(65 + (context.cellIndex || 0));
+    description = `Table ${context.tableIndex}, Cell ${colLetter}${context.rowIndex || 1}`;
+  } else if (nodeType === "listItem" && context.listIndex !== void 0) {
+    const depthStr = (context.listDepth || 0) > 1 ? ` (nested, level ${context.listDepth})` : "";
+    description = `List ${context.listIndex}, Item ${context.listItemIndex || 1}${depthStr}`;
   } else if (context.currentSection) {
     description = `"${truncate(context.currentSection, 50)}" section`;
   } else {
     description = "document body";
   }
+  const tableCoords = context.currentNodeType === "tableCell" && context.rowIndex !== void 0 ? { row: context.rowIndex, column: context.cellIndex || 0 } : void 0;
   return {
     nodeType,
     headingLevel: context.headingLevel,
     sectionTitle: context.currentSection || void 0,
-    description
+    description,
+    tableCoords,
+    listIndex: context.currentNodeType === "listItem" ? context.listItemIndex : void 0,
+    listDepth: context.currentNodeType === "listItem" ? context.listDepth : void 0
   };
 }
 function groupReplacements(changes) {
@@ -674,6 +1166,935 @@ function groupReplacements(changes) {
     }
   }
   return result;
+}
+
+// src/services/nodeAligner.ts
+init_nodeFingerprint();
+var SIMILARITY_THRESHOLD = 0.7;
+function findLCS(seqA, seqB) {
+  const m = seqA.length;
+  const n = seqB.length;
+  const dp = Array.from(
+    { length: m + 1 },
+    () => Array(n + 1).fill(0)
+  );
+  for (let i2 = 1; i2 <= m; i2++) {
+    for (let j2 = 1; j2 <= n; j2++) {
+      if (seqA[i2 - 1] === seqB[j2 - 1]) {
+        dp[i2][j2] = dp[i2 - 1][j2 - 1] + 1;
+      } else {
+        dp[i2][j2] = Math.max(dp[i2 - 1][j2], dp[i2][j2 - 1]);
+      }
+    }
+  }
+  const result = [];
+  let i = m;
+  let j = n;
+  while (i > 0 && j > 0) {
+    if (seqA[i - 1] === seqB[j - 1]) {
+      result.unshift([i - 1, j - 1]);
+      i--;
+      j--;
+    } else if (dp[i - 1][j] > dp[i][j - 1]) {
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return result;
+}
+function findFuzzyMatches(unmatchedA, unmatchedB, threshold = SIMILARITY_THRESHOLD) {
+  const matches = [];
+  const usedA = /* @__PURE__ */ new Set();
+  const usedB = /* @__PURE__ */ new Set();
+  const similarities = [];
+  for (let i = 0; i < unmatchedA.length; i++) {
+    for (let j = 0; j < unmatchedB.length; j++) {
+      const fpSim = calculateSimilarity(unmatchedA[i].fingerprint, unmatchedB[j].fingerprint);
+      if (fpSim === 0) continue;
+      const textSim = getNodeTextSimilarity(unmatchedA[i].node, unmatchedB[j].node);
+      if (textSim >= threshold) {
+        similarities.push({ i, j, sim: textSim });
+      }
+    }
+  }
+  similarities.sort((a, b) => b.sim - a.sim);
+  for (const { i, j, sim } of similarities) {
+    if (!usedA.has(i) && !usedB.has(j)) {
+      matches.push([unmatchedA[i], unmatchedB[j], sim]);
+      usedA.add(i);
+      usedB.add(j);
+    }
+  }
+  const remainingA = unmatchedA.filter((_, i) => !usedA.has(i));
+  const remainingB = unmatchedB.filter((_, j) => !usedB.has(j));
+  return { matches, remainingA, remainingB };
+}
+function alignNodes(nodesA, nodesB) {
+  const fpsA = nodesA.map((n) => n.fingerprint);
+  const fpsB = nodesB.map((n) => n.fingerprint);
+  const lcsMatches = findLCS(fpsA, fpsB);
+  const matchedIndicesA = new Set(lcsMatches.map(([i]) => i));
+  const matchedIndicesB = new Set(lcsMatches.map(([, j]) => j));
+  const matched = lcsMatches.map(([i, j]) => ({
+    pathA: nodesA[i].path,
+    pathB: nodesB[j].path,
+    fingerprint: nodesA[i].fingerprint,
+    similarity: 1
+    // Exact match
+  }));
+  const unmatchedA = nodesA.filter((_, i) => !matchedIndicesA.has(i));
+  const unmatchedB = nodesB.filter((_, j) => !matchedIndicesB.has(j));
+  const { matches: fuzzyMatches, remainingA, remainingB } = findFuzzyMatches(
+    unmatchedA,
+    unmatchedB
+  );
+  for (const [nodeA, nodeB, similarity] of fuzzyMatches) {
+    matched.push({
+      pathA: nodeA.path,
+      pathB: nodeB.path,
+      fingerprint: nodeA.fingerprint,
+      similarity
+    });
+  }
+  return {
+    matched,
+    deletions: remainingA,
+    insertions: remainingB
+  };
+}
+function alignDocuments(docA, docB) {
+  const blocksA = extractBlockFingerprints(docA);
+  const blocksB = extractBlockFingerprints(docB);
+  return alignNodes(blocksA, blocksB);
+}
+function alignTableRows(tableA, tableB, tablePathA, tablePathB) {
+  const rowsA = (tableA.content || []).map((row, i) => ({
+    node: row,
+    fingerprint: "",
+    // Will be computed
+    path: [...tablePathA, i]
+  }));
+  const rowsB = (tableB.content || []).map((row, i) => ({
+    node: row,
+    fingerprint: "",
+    // Will be computed
+    path: [...tablePathB, i]
+  }));
+  const { generateFingerprint: generateFingerprint2 } = (init_nodeFingerprint(), __toCommonJS(nodeFingerprint_exports));
+  for (const row of rowsA) {
+    row.fingerprint = generateFingerprint2(row.node);
+  }
+  for (const row of rowsB) {
+    row.fingerprint = generateFingerprint2(row.node);
+  }
+  return alignNodes(rowsA, rowsB);
+}
+function alignTableCells(rowA, rowB, rowPathA, rowPathB) {
+  const cellsA = (rowA.content || []).map((cell, i) => ({
+    node: cell,
+    fingerprint: "",
+    // Will be computed
+    path: [...rowPathA, i]
+  }));
+  const cellsB = (rowB.content || []).map((cell, i) => ({
+    node: cell,
+    fingerprint: "",
+    // Will be computed
+    path: [...rowPathB, i]
+  }));
+  const { generateFingerprint: generateFingerprint2 } = (init_nodeFingerprint(), __toCommonJS(nodeFingerprint_exports));
+  for (const cell of cellsA) {
+    cell.fingerprint = generateFingerprint2(cell.node);
+  }
+  for (const cell of cellsB) {
+    cell.fingerprint = generateFingerprint2(cell.node);
+  }
+  if (cellsA.length === cellsB.length) {
+    const matched = [];
+    for (let i = 0; i < cellsA.length; i++) {
+      const similarity = getNodeTextSimilarity(cellsA[i].node, cellsB[i].node);
+      matched.push({
+        pathA: cellsA[i].path,
+        pathB: cellsB[i].path,
+        fingerprint: cellsA[i].fingerprint,
+        similarity
+      });
+    }
+    return { matched, deletions: [], insertions: [] };
+  }
+  return alignNodes(cellsA, cellsB);
+}
+function alignListItems(listA, listB, listPathA, listPathB) {
+  const itemsA = (listA.content || []).map((item, i) => ({
+    node: item,
+    fingerprint: "",
+    // Will be computed
+    path: [...listPathA, i]
+  }));
+  const itemsB = (listB.content || []).map((item, i) => ({
+    node: item,
+    fingerprint: "",
+    // Will be computed
+    path: [...listPathB, i]
+  }));
+  const { generateFingerprint: generateFingerprint2 } = (init_nodeFingerprint(), __toCommonJS(nodeFingerprint_exports));
+  for (const item of itemsA) {
+    item.fingerprint = generateFingerprint2(item.node);
+  }
+  for (const item of itemsB) {
+    item.fingerprint = generateFingerprint2(item.node);
+  }
+  return alignNodes(itemsA, itemsB);
+}
+
+// src/services/attrComparer.ts
+var KNOWN_DEFAULTS = {
+  paragraph: {
+    textAlign: "left",
+    indent: 0,
+    lineSpacing: 1
+  },
+  heading: {
+    level: 1,
+    textAlign: "left"
+  },
+  table: {
+    alignment: "left",
+    borderStyle: "single"
+  },
+  tableCell: {
+    verticalAlign: "top",
+    colspan: 1,
+    rowspan: 1
+  },
+  listItem: {
+    indent: 0
+  },
+  image: {
+    width: "auto",
+    height: "auto"
+  }
+};
+var IGNORED_ATTRS = /* @__PURE__ */ new Set([
+  "id",
+  "class",
+  "data-id",
+  "data-pm-slice",
+  "__trackAttrChanges"
+]);
+function isPlainObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) && Object.prototype.toString.call(value) === "[object Object]";
+}
+function deepEqual2(a, b) {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((val, i) => deepEqual2(val, b[i]));
+  }
+  if (isPlainObject(a) && isPlainObject(b)) {
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    if (keysA.length !== keysB.length) return false;
+    return keysA.every((key) => deepEqual2(a[key], b[key]));
+  }
+  return false;
+}
+function normalizeValue(value, key, nodeType) {
+  if (value !== void 0 && value !== null) {
+    return value;
+  }
+  const defaults = KNOWN_DEFAULTS[nodeType];
+  if (defaults && key in defaults) {
+    return defaults[key];
+  }
+  return value;
+}
+function compareAttrs(attrsA, attrsB, nodeType = "", prefix = "") {
+  const diffs = [];
+  const a = attrsA || {};
+  const b = attrsB || {};
+  const allKeys = /* @__PURE__ */ new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const key of allKeys) {
+    if (IGNORED_ATTRS.has(key)) continue;
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    const valueA = normalizeValue(a[key], key, nodeType);
+    const valueB = normalizeValue(b[key], key, nodeType);
+    if (isPlainObject(valueA) && isPlainObject(valueB)) {
+      const nestedDiffs = compareAttrs(
+        valueA,
+        valueB,
+        nodeType,
+        fullKey
+      );
+      diffs.push(...nestedDiffs);
+      continue;
+    }
+    if (!deepEqual2(valueA, valueB)) {
+      diffs.push({
+        key: fullKey,
+        before: valueA,
+        after: valueB
+      });
+    }
+  }
+  return diffs;
+}
+function compareNodeAttrs(nodeA, nodeB) {
+  const nodeType = nodeA.type || nodeB.type || "";
+  return compareAttrs(nodeA.attrs, nodeB.attrs, nodeType);
+}
+
+// src/services/tableBlockDiffer.ts
+function detectColumnChanges(matchedRows, tableA, tableB, tablePathA, tablePathB) {
+  const changes = [];
+  if (matchedRows.length === 0) return changes;
+  const firstMatch = matchedRows[0];
+  const rowIdxA = firstMatch.pathA[firstMatch.pathA.length - 1];
+  const rowIdxB = firstMatch.pathB[firstMatch.pathB.length - 1];
+  const rowA = tableA.content?.[rowIdxA];
+  const rowB = tableB.content?.[rowIdxB];
+  if (!rowA || !rowB) return changes;
+  const cellCountA = rowA.content?.length || 0;
+  const cellCountB = rowB.content?.length || 0;
+  const diff = cellCountB - cellCountA;
+  if (diff === 0) return changes;
+  let consistent = true;
+  for (const match of matchedRows) {
+    const idxA = match.pathA[match.pathA.length - 1];
+    const idxB = match.pathB[match.pathB.length - 1];
+    const rA = tableA.content?.[idxA];
+    const rB = tableB.content?.[idxB];
+    if (!rA || !rB) continue;
+    const countA = rA.content?.length || 0;
+    const countB = rB.content?.length || 0;
+    if (countB - countA !== diff) {
+      consistent = false;
+      break;
+    }
+  }
+  if (!consistent) return changes;
+  if (diff > 0) {
+    for (let i = 0; i < diff; i++) {
+      changes.push({
+        id: uuid.v4(),
+        type: "columnInsert",
+        nodeType: "tableColumn",
+        path: [...tablePathB],
+        node: { type: "column", position: cellCountA + i }
+      });
+    }
+  } else {
+    for (let i = 0; i < Math.abs(diff); i++) {
+      changes.push({
+        id: uuid.v4(),
+        type: "columnDelete",
+        nodeType: "tableColumn",
+        path: [...tablePathA],
+        node: { type: "column", position: cellCountB + i }
+      });
+    }
+  }
+  return changes;
+}
+function diffTables(tableA, tableB, tablePathA, tablePathB) {
+  const result = {
+    rowChanges: [],
+    columnChanges: [],
+    cellMatches: [],
+    tableAttrChanges: null,
+    cellAttrChanges: []
+  };
+  const tableAttrDiffs = compareNodeAttrs(tableA, tableB);
+  if (tableAttrDiffs.length > 0) {
+    result.tableAttrChanges = {
+      id: uuid.v4(),
+      nodeType: "table",
+      pathA: tablePathA,
+      pathB: tablePathB,
+      changes: tableAttrDiffs
+    };
+  }
+  const rowAlignment = alignTableRows(tableA, tableB, tablePathA, tablePathB);
+  for (const inserted of rowAlignment.insertions) {
+    result.rowChanges.push({
+      id: uuid.v4(),
+      type: "rowInsert",
+      nodeType: "tableRow",
+      path: inserted.path,
+      node: inserted.node
+    });
+  }
+  for (const deleted of rowAlignment.deletions) {
+    result.rowChanges.push({
+      id: uuid.v4(),
+      type: "rowDelete",
+      nodeType: "tableRow",
+      path: deleted.path,
+      node: deleted.node
+    });
+  }
+  result.columnChanges = detectColumnChanges(
+    rowAlignment.matched,
+    tableA,
+    tableB,
+    tablePathA,
+    tablePathB
+  );
+  for (const rowMatch of rowAlignment.matched) {
+    const rowIdxA = rowMatch.pathA[rowMatch.pathA.length - 1];
+    const rowIdxB = rowMatch.pathB[rowMatch.pathB.length - 1];
+    const rowA = tableA.content?.[rowIdxA];
+    const rowB = tableB.content?.[rowIdxB];
+    if (!rowA || !rowB) continue;
+    const cellAlignment = alignTableCells(
+      rowA,
+      rowB,
+      rowMatch.pathA,
+      rowMatch.pathB
+    );
+    result.cellMatches.push(...cellAlignment.matched);
+    for (const cellMatch of cellAlignment.matched) {
+      const cellIdxA = cellMatch.pathA[cellMatch.pathA.length - 1];
+      const cellIdxB = cellMatch.pathB[cellMatch.pathB.length - 1];
+      const cellA = rowA.content?.[cellIdxA];
+      const cellB = rowB.content?.[cellIdxB];
+      if (!cellA || !cellB) continue;
+      const cellAttrDiffs = compareNodeAttrs(cellA, cellB);
+      if (cellAttrDiffs.length > 0) {
+        result.cellAttrChanges.push({
+          id: uuid.v4(),
+          nodeType: "tableCell",
+          pathA: cellMatch.pathA,
+          pathB: cellMatch.pathB,
+          changes: cellAttrDiffs
+        });
+      }
+    }
+  }
+  return result;
+}
+function isTable(node) {
+  return node?.type === "table";
+}
+function getRowLocation(tablePath, rowIndex, tableIndex) {
+  return `Table ${tableIndex + 1}, Row ${rowIndex + 1}`;
+}
+function getRowPreview(row, maxLength = 50) {
+  const cells = [];
+  for (const cell of row.content || []) {
+    const cellText = extractCellText(cell);
+    if (cellText) {
+      cells.push(cellText);
+    }
+  }
+  const preview = cells.join(" | ");
+  if (preview.length > maxLength) {
+    return preview.substring(0, maxLength - 3) + "...";
+  }
+  return preview;
+}
+function extractCellText(cell) {
+  if (!cell.content) return "";
+  const texts = [];
+  for (const child of cell.content) {
+    if (child.type === "text") {
+      texts.push(child.text || "");
+    } else if (child.type === "paragraph" && child.content) {
+      for (const pChild of child.content) {
+        if (pChild.type === "text") {
+          texts.push(pChild.text || "");
+        }
+      }
+    }
+  }
+  return texts.join("").trim();
+}
+function isList(node) {
+  return node?.type === "bulletList" || node?.type === "orderedList";
+}
+function extractListItemText(item) {
+  const texts = [];
+  function extract(node) {
+    if (!node) return;
+    if (node.type === "text") {
+      texts.push(node.text || "");
+    }
+    if (node.content && Array.isArray(node.content)) {
+      for (const child of node.content) {
+        if (!isList(child)) {
+          extract(child);
+        }
+      }
+    }
+  }
+  extract(item);
+  return texts.join("").trim();
+}
+function findNestedLists(item) {
+  const lists = [];
+  if (!item.content) return lists;
+  for (const child of item.content) {
+    if (isList(child)) {
+      lists.push(child);
+    }
+  }
+  return lists;
+}
+function diffLists(listA, listB, listPathA, listPathB, depth = 0) {
+  const result = {
+    itemChanges: [],
+    itemMatches: [],
+    nestedChanges: []
+  };
+  const alignment = alignListItems(listA, listB, listPathA, listPathB);
+  for (const inserted of alignment.insertions) {
+    result.itemChanges.push({
+      id: uuid.v4(),
+      type: "listItemInsert",
+      nodeType: "listItem",
+      path: inserted.path,
+      node: inserted.node
+    });
+  }
+  for (const deleted of alignment.deletions) {
+    result.itemChanges.push({
+      id: uuid.v4(),
+      type: "listItemDelete",
+      nodeType: "listItem",
+      path: deleted.path,
+      node: deleted.node
+    });
+  }
+  result.itemMatches = alignment.matched;
+  for (const match of alignment.matched) {
+    const itemIdxA = match.pathA[match.pathA.length - 1];
+    const itemIdxB = match.pathB[match.pathB.length - 1];
+    const itemA = listA.content?.[itemIdxA];
+    const itemB = listB.content?.[itemIdxB];
+    if (!itemA || !itemB) continue;
+    const nestedA = findNestedLists(itemA);
+    const nestedB = findNestedLists(itemB);
+    const maxNested = Math.max(nestedA.length, nestedB.length);
+    for (let i = 0; i < maxNested; i++) {
+      const nA = nestedA[i];
+      const nB = nestedB[i];
+      if (nA && nB) {
+        const nestedResult = diffLists(
+          nA,
+          nB,
+          [...match.pathA, i],
+          [...match.pathB, i],
+          depth + 1
+        );
+        result.nestedChanges.push(nestedResult);
+      } else if (!nA && nB) {
+        result.itemChanges.push({
+          id: uuid.v4(),
+          type: "listItemInsert",
+          nodeType: "nestedList",
+          path: [...match.pathB, i],
+          node: nB
+        });
+      } else if (nA && !nB) {
+        result.itemChanges.push({
+          id: uuid.v4(),
+          type: "listItemDelete",
+          nodeType: "nestedList",
+          path: [...match.pathA, i],
+          node: nA
+        });
+      }
+    }
+  }
+  return result;
+}
+function getListItemLocation(listPath, itemIndex, listIndex, depth = 0) {
+  const depthStr = depth > 0 ? ` (nested, level ${depth + 1})` : "";
+  return `List ${listIndex + 1}, Item ${itemIndex + 1}${depthStr}`;
+}
+function getListItemPreview(item, maxLength = 50) {
+  const text = extractListItemText(item);
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength - 3) + "...";
+  }
+  return text || "(empty item)";
+}
+function isImage(node) {
+  return node?.type === "image";
+}
+function isHorizontalRule(node) {
+  return node?.type === "horizontalRule" || node?.type === "hr";
+}
+function isHardBreak(node) {
+  return node?.type === "hardBreak";
+}
+function isPageBreak(node) {
+  return node?.type === "pageBreak";
+}
+function isEmbedded(node) {
+  const embeddedTypes = [
+    "equation",
+    "math",
+    "embed",
+    "chart",
+    "drawing",
+    "shape"
+  ];
+  return embeddedTypes.includes(node?.type);
+}
+function isAtomicNode(node) {
+  return isImage(node) || isHorizontalRule(node) || isHardBreak(node) || isPageBreak(node) || isEmbedded(node);
+}
+function getImageIdentifier(node) {
+  if (!isImage(node)) return "";
+  const attrs = node.attrs || {};
+  if (attrs.src) {
+    return `src:${attrs.src}`;
+  }
+  if (attrs.data) {
+    return `data:${simpleHash2(attrs.data)}`;
+  }
+  if (attrs.alt) {
+    return `alt:${attrs.alt}`;
+  }
+  return "unknown";
+}
+function simpleHash2(str) {
+  let hash = 5381;
+  const sample = str.substring(0, 1e3);
+  for (let i = 0; i < sample.length; i++) {
+    hash = (hash << 5) + hash ^ sample.charCodeAt(i);
+  }
+  return (hash >>> 0).toString(16);
+}
+function findImages(doc, basePath = []) {
+  const images = [];
+  function traverse(node, path) {
+    if (!node) return;
+    if (isImage(node)) {
+      images.push({ node, path: [...path] });
+    }
+    if (node.content && Array.isArray(node.content)) {
+      node.content.forEach((child, i) => {
+        traverse(child, [...path, i]);
+      });
+    }
+  }
+  traverse(doc, basePath);
+  return images;
+}
+function diffImages(docA, docB) {
+  const imagesA = findImages(docA);
+  const imagesB = findImages(docB);
+  const inserted = [];
+  const deleted = [];
+  const idsA = /* @__PURE__ */ new Map();
+  const idsB = /* @__PURE__ */ new Map();
+  for (const img of imagesA) {
+    const id = getImageIdentifier(img.node);
+    idsA.set(id, img);
+  }
+  for (const img of imagesB) {
+    const id = getImageIdentifier(img.node);
+    idsB.set(id, img);
+  }
+  for (const [id, img] of idsA) {
+    if (!idsB.has(id)) {
+      deleted.push({
+        id: uuid.v4(),
+        type: "imageDelete",
+        nodeType: "image",
+        path: img.path,
+        node: img.node
+      });
+    }
+  }
+  for (const [id, img] of idsB) {
+    if (!idsA.has(id)) {
+      inserted.push({
+        id: uuid.v4(),
+        type: "imageInsert",
+        nodeType: "image",
+        path: img.path,
+        node: img.node
+      });
+    }
+  }
+  return { inserted, deleted };
+}
+function getImageLocation(path) {
+  if (path.length <= 1) {
+    return `Image at position ${path[0] + 1}`;
+  }
+  return `Image (nested at depth ${path.length})`;
+}
+function getImagePreview(node) {
+  if (!isImage(node)) return "";
+  const attrs = node.attrs || {};
+  if (attrs.alt) {
+    return `"${attrs.alt}"`;
+  }
+  if (attrs.src) {
+    const src = attrs.src;
+    const filename = src.split("/").pop()?.split("?")[0];
+    if (filename) {
+      return filename;
+    }
+  }
+  return "(image)";
+}
+
+// src/services/blockLevelMerger.ts
+function markAllTextAsInserted(node, sharedId, author) {
+  if (node.type === "text") {
+    return {
+      ...node,
+      marks: [...node.marks || [], createTrackInsertMark(author, sharedId)]
+    };
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map(
+        (child) => markAllTextAsInserted(child, sharedId, author)
+      )
+    };
+  }
+  return node;
+}
+function markAllTextAsDeleted(node, sharedId, author) {
+  if (node.type === "text") {
+    return {
+      ...node,
+      marks: [...node.marks || [], createTrackDeleteMark(author, sharedId)]
+    };
+  }
+  if (node.content && Array.isArray(node.content)) {
+    return {
+      ...node,
+      content: node.content.map(
+        (child) => markAllTextAsDeleted(child, sharedId, author)
+      )
+    };
+  }
+  return node;
+}
+function cloneNode2(node) {
+  return JSON.parse(JSON.stringify(node));
+}
+function extractTextPreview(node, maxLength = 50) {
+  const texts = [];
+  function extract(n) {
+    if (n.type === "text") {
+      texts.push(n.text || "");
+    }
+    if (n.content) {
+      for (const child of n.content) {
+        extract(child);
+      }
+    }
+  }
+  extract(node);
+  const text = texts.join("").trim();
+  if (text.length > maxLength) {
+    return text.substring(0, maxLength - 3) + "...";
+  }
+  return text || "(empty)";
+}
+function processStructuralChanges(docA, docB, author = DEFAULT_AUTHOR) {
+  const changes = [];
+  const infos = [];
+  const alignment = alignDocuments(docA, docB);
+  let tableIndex = 0;
+  let listIndex = 0;
+  let paragraphIndex = 0;
+  for (const inserted of alignment.insertions) {
+    const node = inserted.node;
+    const sharedId = uuid.v4();
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    let type = "paragraphInsert";
+    let location = "";
+    let preview = "";
+    if (isTable(node)) {
+      type = "rowInsert";
+      location = `New table at position ${inserted.path[0] + 1}`;
+      preview = `Table with ${node.content?.length || 0} rows`;
+      tableIndex++;
+    } else if (isList(node)) {
+      type = "listItemInsert";
+      location = `New list at position ${inserted.path[0] + 1}`;
+      preview = `List with ${node.content?.length || 0} items`;
+      listIndex++;
+    } else {
+      type = "paragraphInsert";
+      paragraphIndex++;
+      location = `Paragraph ${paragraphIndex}`;
+      preview = extractTextPreview(node);
+    }
+    changes.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      path: inserted.path,
+      node: markAllTextAsInserted(cloneNode2(node), sharedId, author)
+    });
+    infos.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      location,
+      preview,
+      author,
+      date
+    });
+  }
+  for (const deleted of alignment.deletions) {
+    const node = deleted.node;
+    const sharedId = uuid.v4();
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    let type = "paragraphDelete";
+    let location = "";
+    let preview = "";
+    if (isTable(node)) {
+      type = "rowDelete";
+      location = `Deleted table at position ${deleted.path[0] + 1}`;
+      preview = `Table with ${node.content?.length || 0} rows`;
+    } else if (isList(node)) {
+      type = "listItemDelete";
+      location = `Deleted list at position ${deleted.path[0] + 1}`;
+      preview = `List with ${node.content?.length || 0} items`;
+    } else {
+      type = "paragraphDelete";
+      location = `Deleted paragraph`;
+      preview = extractTextPreview(node);
+    }
+    changes.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      path: deleted.path,
+      node: markAllTextAsDeleted(cloneNode2(node), sharedId, author)
+    });
+    infos.push({
+      id: sharedId,
+      type,
+      nodeType: node.type,
+      location,
+      preview,
+      author,
+      date
+    });
+  }
+  for (const match of alignment.matched) {
+    const nodeA = docA.content?.[match.pathA[0]];
+    const nodeB = docB.content?.[match.pathB[0]];
+    if (!nodeA || !nodeB) continue;
+    if (isTable(nodeA) && isTable(nodeB)) {
+      tableIndex++;
+      const tableResult = diffTables(nodeA, nodeB, match.pathA, match.pathB);
+      for (const rowChange of tableResult.rowChanges) {
+        const sharedId = rowChange.id;
+        const date = (/* @__PURE__ */ new Date()).toISOString();
+        const rowIndex = rowChange.path[rowChange.path.length - 1];
+        const isInsert = rowChange.type === "rowInsert";
+        const location = getRowLocation(rowChange.path, rowIndex, tableIndex - 1);
+        const preview = getRowPreview(rowChange.node);
+        const markedNode = isInsert ? markAllTextAsInserted(cloneNode2(rowChange.node), sharedId, author) : markAllTextAsDeleted(cloneNode2(rowChange.node), sharedId, author);
+        changes.push({
+          ...rowChange,
+          node: markedNode
+        });
+        infos.push({
+          id: sharedId,
+          type: rowChange.type,
+          nodeType: "tableRow",
+          location,
+          preview,
+          author,
+          date
+        });
+      }
+    }
+    if (isList(nodeA) && isList(nodeB)) {
+      listIndex++;
+      const listResult = diffLists(nodeA, nodeB, match.pathA, match.pathB);
+      for (const itemChange of listResult.itemChanges) {
+        const sharedId = itemChange.id;
+        const date = (/* @__PURE__ */ new Date()).toISOString();
+        const itemIndex = itemChange.path[itemChange.path.length - 1];
+        const isInsert = itemChange.type === "listItemInsert";
+        const location = getListItemLocation(itemChange.path, itemIndex, listIndex - 1);
+        const preview = getListItemPreview(itemChange.node);
+        const markedNode = isInsert ? markAllTextAsInserted(cloneNode2(itemChange.node), sharedId, author) : markAllTextAsDeleted(cloneNode2(itemChange.node), sharedId, author);
+        changes.push({
+          ...itemChange,
+          node: markedNode
+        });
+        infos.push({
+          id: sharedId,
+          type: itemChange.type,
+          nodeType: "listItem",
+          location,
+          preview,
+          author,
+          date
+        });
+      }
+    }
+  }
+  const imageChanges = diffImages(docA, docB);
+  for (const imgInsert of imageChanges.inserted) {
+    const sharedId = imgInsert.id;
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    infos.push({
+      id: sharedId,
+      type: "imageInsert",
+      nodeType: "image",
+      location: getImageLocation(imgInsert.path),
+      preview: getImagePreview(imgInsert.node),
+      author,
+      date
+    });
+    changes.push(imgInsert);
+  }
+  for (const imgDelete of imageChanges.deleted) {
+    const sharedId = imgDelete.id;
+    const date = (/* @__PURE__ */ new Date()).toISOString();
+    infos.push({
+      id: sharedId,
+      type: "imageDelete",
+      nodeType: "image",
+      location: getImageLocation(imgDelete.path),
+      preview: getImagePreview(imgDelete.node),
+      author,
+      date
+    });
+    changes.push(imgDelete);
+  }
+  return { changes, infos };
+}
+function generateStructuralChangeSummary(infos) {
+  const summary = [];
+  const rowInserts = infos.filter((i) => i.type === "rowInsert").length;
+  const rowDeletes = infos.filter((i) => i.type === "rowDelete").length;
+  const paragraphInserts = infos.filter((i) => i.type === "paragraphInsert").length;
+  const paragraphDeletes = infos.filter((i) => i.type === "paragraphDelete").length;
+  const listItemInserts = infos.filter((i) => i.type === "listItemInsert").length;
+  const listItemDeletes = infos.filter((i) => i.type === "listItemDelete").length;
+  const imageInserts = infos.filter((i) => i.type === "imageInsert").length;
+  const imageDeletes = infos.filter((i) => i.type === "imageDelete").length;
+  if (rowInserts > 0) summary.push(`${rowInserts} row(s) inserted`);
+  if (rowDeletes > 0) summary.push(`${rowDeletes} row(s) deleted`);
+  if (paragraphInserts > 0) summary.push(`${paragraphInserts} paragraph(s) inserted`);
+  if (paragraphDeletes > 0) summary.push(`${paragraphDeletes} paragraph(s) deleted`);
+  if (listItemInserts > 0) summary.push(`${listItemInserts} list item(s) inserted`);
+  if (listItemDeletes > 0) summary.push(`${listItemDeletes} list item(s) deleted`);
+  if (imageInserts > 0) summary.push(`${imageInserts} image(s) inserted`);
+  if (imageDeletes > 0) summary.push(`${imageDeletes} image(s) deleted`);
+  return summary;
 }
 var permissionResolver = ({ permission }) => {
   return TRACK_CHANGE_PERMISSIONS.includes(permission) ? true : void 0;
@@ -715,7 +2136,11 @@ var DocxDiffEditor = react.forwardRef(
     onError,
     className = "",
     toolbarClassName = "",
-    editorClassName = ""
+    editorClassName = "",
+    // Structural Changes Pane options
+    structuralPanePosition = "bottom-right",
+    structuralPaneCollapsed = false,
+    hideStructuralPane = false
   }, ref) {
     const containerRef = react.useRef(null);
     const toolbarRef = react.useRef(null);
@@ -729,6 +2154,12 @@ var DocxDiffEditor = react.forwardRef(
     const [sourceJson, setSourceJson] = react.useState(null);
     const [mergedJson, setMergedJson] = react.useState(null);
     const [diffResult, setDiffResult] = react.useState(null);
+    const [structuralChanges, setStructuralChanges] = react.useState([]);
+    const [isPaneDismissed, setIsPaneDismissed] = react.useState(false);
+    const structuralChangeIdsRef = react.useRef(/* @__PURE__ */ new Set());
+    react.useEffect(() => {
+      structuralChangeIdsRef.current = new Set(structuralChanges.map((c) => c.id));
+    }, [structuralChanges]);
     const instanceId = react.useRef(`dde-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
     const editorId = `dde-editor-${instanceId.current}`;
     const toolbarId = `dde-toolbar-${instanceId.current}`;
@@ -759,6 +2190,61 @@ var DocxDiffEditor = react.forwardRef(
         onError?.(error2);
       },
       [onError]
+    );
+    const handleAcceptStructuralChange = react.useCallback((changeId) => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.acceptTrackedChangeById) {
+        editor.commands.acceptTrackedChangeById(changeId);
+        setStructuralChanges((prev) => prev.filter((c) => c.id !== changeId));
+      }
+    }, []);
+    const handleRejectStructuralChange = react.useCallback((changeId) => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.rejectTrackedChangeById) {
+        editor.commands.rejectTrackedChangeById(changeId);
+        setStructuralChanges((prev) => prev.filter((c) => c.id !== changeId));
+      }
+    }, []);
+    const handleAcceptAllStructural = react.useCallback(() => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.acceptTrackedChangeById) {
+        for (const change of structuralChanges) {
+          editor.commands.acceptTrackedChangeById(change.id);
+        }
+        setStructuralChanges([]);
+      }
+    }, [structuralChanges]);
+    const handleRejectAllStructural = react.useCallback(() => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.rejectTrackedChangeById) {
+        for (const change of structuralChanges) {
+          editor.commands.rejectTrackedChangeById(change.id);
+        }
+        setStructuralChanges([]);
+      }
+    }, [structuralChanges]);
+    const handleNavigateToChange = react.useCallback((changeId) => {
+      const change = structuralChanges.find((c) => c.id === changeId);
+      if (!change) return;
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.focus) {
+        editor.commands.focus();
+      }
+    }, [structuralChanges]);
+    const handlePaneDismiss = react.useCallback(() => {
+      setIsPaneDismissed(true);
+    }, []);
+    const handleCommentsUpdate = react.useCallback(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (event) => {
+        if (event?.type === "resolved" && event?.comment?.trackedChange) {
+          const commentId = event.comment.commentId;
+          if (structuralChangeIdsRef.current.has(commentId)) {
+            setStructuralChanges((prev) => prev.filter((c) => c.id !== commentId));
+          }
+        }
+      },
+      []
     );
     const destroySuperdoc = react.useCallback(() => {
       if (superdocRef.current) {
@@ -797,7 +2283,9 @@ var DocxDiffEditor = react.forwardRef(
               role: "editor",
               rulers: showRulers,
               user: DEFAULT_SUPERDOC_USER,
-              permissionResolver
+              permissionResolver,
+              // Bubble sync: listen for track changes resolved via SuperDoc bubbles
+              onCommentsUpdate: handleCommentsUpdate
             };
             if (options.document) {
               superdocConfig.document = options.document;
@@ -1069,16 +2557,28 @@ var DocxDiffEditor = react.forwardRef(
                 }, 50);
               }
             }
+            const { changes: structChanges, infos: structInfos } = processStructuralChanges(
+              sourceJson,
+              newJson,
+              author
+            );
+            setStructuralChanges(structInfos);
+            setIsPaneDismissed(false);
             const insertions = diff.segments.filter((s) => s.type === "insert").length;
             const deletions = diff.segments.filter((s) => s.type === "delete").length;
             const formatChanges = diff.formatChanges?.length || 0;
+            const structuralChangeCount = structInfos.length;
+            const structuralSummary = generateStructuralChangeSummary(structInfos);
+            const combinedSummary = [...diff.summary, ...structuralSummary];
             const result = {
-              totalChanges: insertions + deletions + formatChanges,
+              totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
               insertions,
               deletions,
               formatChanges,
-              summary: diff.summary,
-              mergedJson: merged
+              structuralChanges: structuralChangeCount,
+              summary: combinedSummary,
+              mergedJson: merged,
+              structuralChangeInfos: structInfos
             };
             onComparisonComplete?.(result);
             return result;
@@ -1431,11 +2931,28 @@ var DocxDiffEditor = react.forwardRef(
           ref: containerRef,
           className: `dde-editor ${editorClassName}`.trim()
         }
+      ),
+      !hideStructuralPane && !isPaneDismissed && structuralChanges.length > 0 && /* @__PURE__ */ jsxRuntime.jsx(
+        StructuralChangesPane,
+        {
+          changes: structuralChanges,
+          position: structuralPanePosition,
+          initiallyCollapsed: structuralPaneCollapsed,
+          onAccept: handleAcceptStructuralChange,
+          onReject: handleRejectStructuralChange,
+          onAcceptAll: handleAcceptAllStructural,
+          onRejectAll: handleRejectAllStructural,
+          onNavigate: handleNavigateToChange,
+          onDismiss: handlePaneDismiss
+        }
       )
     ] });
   }
 );
 var DocxDiffEditor_default = DocxDiffEditor;
+
+// src/services/index.ts
+init_nodeFingerprint();
 
 // src/blankTemplate.ts
 var BLANK_DOCX_BASE64 = `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`;
@@ -1477,18 +2994,31 @@ exports.CSS_PREFIX = CSS_PREFIX;
 exports.DEFAULT_AUTHOR = DEFAULT_AUTHOR;
 exports.DEFAULT_SUPERDOC_USER = DEFAULT_SUPERDOC_USER;
 exports.DocxDiffEditor = DocxDiffEditor;
+exports.StructuralChangesPane = StructuralChangesPane;
+exports.alignDocuments = alignDocuments;
 exports.createTrackDeleteMark = createTrackDeleteMark;
 exports.createTrackFormatMark = createTrackFormatMark;
 exports.createTrackInsertMark = createTrackInsertMark;
 exports.default = DocxDiffEditor_default;
 exports.detectContentType = detectContentType;
 exports.diffDocuments = diffDocuments;
+exports.diffImages = diffImages;
+exports.diffLists = diffLists;
+exports.diffTables = diffTables;
 exports.extractEnrichedChanges = extractEnrichedChanges;
+exports.extractEnrichedChangesWithStructural = extractEnrichedChangesWithStructural;
+exports.generateFingerprint = generateFingerprint;
+exports.generateStructuralChangeSummary = generateStructuralChangeSummary;
 exports.getBlankTemplateBlob = getBlankTemplateBlob;
 exports.getBlankTemplateFile = getBlankTemplateFile;
+exports.isAtomicNode = isAtomicNode;
+exports.isImage = isImage;
+exports.isList = isList;
 exports.isProseMirrorJSON = isProseMirrorJSON;
+exports.isTable = isTable;
 exports.isValidDocxFile = isValidDocxFile;
 exports.mergeDocuments = mergeDocuments;
 exports.parseDocxFile = parseDocxFile;
+exports.processStructuralChanges = processStructuralChanges;
 //# sourceMappingURL=index.js.map
 //# sourceMappingURL=index.js.map

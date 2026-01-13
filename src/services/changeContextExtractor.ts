@@ -2,6 +2,8 @@
  * Change Context Extractor
  * Extracts enriched changes with semantic context from merged document.
  * Provides surrounding text so the LLM can understand what the change is about.
+ * 
+ * Updated to include structural change information (tables, lists, images).
  */
 
 import type {
@@ -10,17 +12,34 @@ import type {
   EnrichedChange,
   ChangeLocation,
   TraversalContext,
+  StructuralChangeInfo,
+  StructuralChangeType,
 } from '../types';
+
+/**
+ * Extended traversal context with table/list tracking
+ */
+interface ExtendedContext extends TraversalContext {
+  tableIndex?: number;
+  rowIndex?: number;
+  cellIndex?: number;
+  listIndex?: number;
+  listItemIndex?: number;
+  listDepth?: number;
+}
 
 /**
  * Main entry point - extract enriched changes from merged document
  */
 export function extractEnrichedChanges(mergedJson: ProseMirrorJSON): EnrichedChange[] {
   const changes: EnrichedChange[] = [];
-  const context: TraversalContext = {
+  const context: ExtendedContext = {
     currentSection: null,
     currentParagraphText: '',
     currentNodeType: 'unknown',
+    tableIndex: 0,
+    listIndex: 0,
+    listDepth: 0,
   };
 
   traverseDocument(mergedJson, context, changes);
@@ -28,11 +47,75 @@ export function extractEnrichedChanges(mergedJson: ProseMirrorJSON): EnrichedCha
 }
 
 /**
+ * Extract enriched changes with structural change infos included.
+ * This merges inline text changes with structural change metadata.
+ */
+export function extractEnrichedChangesWithStructural(
+  mergedJson: ProseMirrorJSON,
+  structuralInfos: StructuralChangeInfo[]
+): EnrichedChange[] {
+  // Get inline text changes
+  const textChanges = extractEnrichedChanges(mergedJson);
+
+  // Convert structural infos to enriched changes
+  const structuralChanges: EnrichedChange[] = structuralInfos.map((info) => {
+    const location = buildLocationFromStructural(info);
+    
+    return {
+      type: info.type.includes('Insert') ? 'insertion' : 'deletion',
+      text: info.preview,
+      location,
+      surroundingText: info.preview,
+      structuralType: info.type,
+      charCount: info.preview.length,
+    };
+  });
+
+  // Combine and sort (structural changes typically more significant)
+  return [...structuralChanges, ...textChanges];
+}
+
+/**
+ * Build location from structural change info
+ */
+function buildLocationFromStructural(info: StructuralChangeInfo): ChangeLocation {
+  const nodeType = mapNodeTypeToLocation(info.nodeType);
+  
+  return {
+    nodeType,
+    description: info.location,
+    sectionTitle: undefined,
+  };
+}
+
+/**
+ * Map node types to ChangeLocation nodeType
+ */
+function mapNodeTypeToLocation(nodeType: string): ChangeLocation['nodeType'] {
+  switch (nodeType) {
+    case 'tableRow':
+    case 'tableCell':
+    case 'table':
+      return 'table';
+    case 'listItem':
+      return 'listItem';
+    case 'paragraph':
+      return 'paragraph';
+    case 'heading':
+      return 'heading';
+    case 'image':
+      return 'image';
+    default:
+      return 'unknown';
+  }
+}
+
+/**
  * Recursively walk the document tree
  */
 function traverseDocument(
   node: ProseMirrorNode,
-  context: TraversalContext,
+  context: ExtendedContext,
   changes: EnrichedChange[]
 ): void {
   if (!node) return;
@@ -49,9 +132,21 @@ function traverseDocument(
   } else if (node.type === 'listItem') {
     context.currentNodeType = 'listItem';
     context.currentParagraphText = extractAllText(node);
-  } else if (node.type === 'tableCell') {
+    context.listItemIndex = (context.listItemIndex || 0) + 1;
+  } else if (node.type === 'tableCell' || node.type === 'tableHeader') {
     context.currentNodeType = 'tableCell';
     context.currentParagraphText = extractAllText(node);
+    context.cellIndex = (context.cellIndex || 0) + 1;
+  } else if (node.type === 'tableRow') {
+    context.rowIndex = (context.rowIndex || 0) + 1;
+    context.cellIndex = 0;
+  } else if (node.type === 'table') {
+    context.tableIndex = (context.tableIndex || 0) + 1;
+    context.rowIndex = 0;
+  } else if (node.type === 'bulletList' || node.type === 'orderedList') {
+    context.listIndex = (context.listIndex || 0) + 1;
+    context.listItemIndex = 0;
+    context.listDepth = (context.listDepth || 0) + 1;
   }
 
   // Check for track change marks on text nodes
@@ -68,6 +163,11 @@ function traverseDocument(
     for (const child of node.content) {
       traverseDocument(child, context, changes);
     }
+  }
+
+  // Reset depth counters when exiting lists
+  if (node.type === 'bulletList' || node.type === 'orderedList') {
+    context.listDepth = Math.max(0, (context.listDepth || 1) - 1);
   }
 }
 
@@ -103,11 +203,20 @@ function findTrackChangeMark(marks: ProseMirrorNode[]): ProseMirrorNode | null {
 function createEnrichedChange(
   node: ProseMirrorNode,
   trackMark: ProseMirrorNode,
-  context: TraversalContext
+  context: ExtendedContext
 ): EnrichedChange | null {
   const text = node.text || '';
   const location = buildLocation(context);
   const surroundingText = extractSurroundingSentence(text, context.currentParagraphText);
+
+  // Add table/list position info if applicable
+  const tablePosition = context.currentNodeType === 'tableCell' && context.rowIndex !== undefined
+    ? { row: context.rowIndex, column: context.cellIndex || 0 }
+    : undefined;
+  
+  const listPosition = context.currentNodeType === 'listItem' && context.listItemIndex !== undefined
+    ? { index: context.listItemIndex, depth: context.listDepth || 0 }
+    : undefined;
 
   if (trackMark.type === 'trackInsert') {
     return {
@@ -116,6 +225,8 @@ function createEnrichedChange(
       location,
       surroundingText,
       charCount: text.length,
+      tablePosition,
+      listPosition,
     };
   }
 
@@ -126,6 +237,8 @@ function createEnrichedChange(
       location,
       surroundingText,
       charCount: text.length,
+      tablePosition,
+      listPosition,
     };
   }
 
@@ -146,6 +259,8 @@ function createEnrichedChange(
           .filter((t: string) => !after.some((a: ProseMirrorNode) => a.type === t)),
       },
       charCount: text.length,
+      tablePosition,
+      listPosition,
     };
   }
 
@@ -225,23 +340,37 @@ function truncate(text: string, maxLen: number): string {
 /**
  * Build location info
  */
-function buildLocation(context: TraversalContext): ChangeLocation {
+function buildLocation(context: ExtendedContext): ChangeLocation {
   const nodeType = context.currentNodeType as ChangeLocation['nodeType'];
 
   let description: string;
   if (nodeType === 'heading') {
     description = context.headingLevel === 1 ? 'document title' : 'section heading';
+  } else if (nodeType === 'tableCell' && context.tableIndex !== undefined) {
+    const colLetter = String.fromCharCode(65 + (context.cellIndex || 0));
+    description = `Table ${context.tableIndex}, Cell ${colLetter}${context.rowIndex || 1}`;
+  } else if (nodeType === 'listItem' && context.listIndex !== undefined) {
+    const depthStr = (context.listDepth || 0) > 1 ? ` (nested, level ${context.listDepth})` : '';
+    description = `List ${context.listIndex}, Item ${context.listItemIndex || 1}${depthStr}`;
   } else if (context.currentSection) {
     description = `"${truncate(context.currentSection, 50)}" section`;
   } else {
     description = 'document body';
   }
 
+  // Add table/list coordinates to location
+  const tableCoords = context.currentNodeType === 'tableCell' && context.rowIndex !== undefined
+    ? { row: context.rowIndex, column: context.cellIndex || 0 }
+    : undefined;
+
   return {
     nodeType,
     headingLevel: context.headingLevel,
     sectionTitle: context.currentSection || undefined,
     description,
+    tableCoords,
+    listIndex: context.currentNodeType === 'listItem' ? context.listItemIndex : undefined,
+    listDepth: context.currentNodeType === 'listItem' ? context.listDepth : undefined,
   };
 }
 

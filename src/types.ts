@@ -90,6 +90,137 @@ export interface DiffResult {
 }
 
 // ============================================================================
+// Block-Level Diff Types
+// ============================================================================
+
+/**
+ * Type of structural change
+ */
+export type StructuralChangeType =
+  | 'rowInsert'
+  | 'rowDelete'
+  | 'columnInsert'
+  | 'columnDelete'
+  | 'paragraphInsert'
+  | 'paragraphDelete'
+  | 'listItemInsert'
+  | 'listItemDelete'
+  | 'imageInsert'
+  | 'imageDelete'
+  | 'attrChange';
+
+/**
+ * A structural change (node added/removed/moved)
+ */
+export interface StructuralChange {
+  /** Unique ID shared across all marks in this structural change */
+  id: string;
+  /** Type of structural change */
+  type: StructuralChangeType;
+  /** The node type affected (e.g., 'tableRow', 'paragraph', 'listItem') */
+  nodeType: string;
+  /** Path to the node in the document tree */
+  path: number[];
+  /** The affected node */
+  node: ProseMirrorJSON;
+  /** For moves: original path */
+  fromPath?: number[];
+  /** For moves: new path */
+  toPath?: number[];
+}
+
+/**
+ * Single attribute difference
+ */
+export interface AttrDiff {
+  /** Attribute key (e.g., "borders.top.color") */
+  key: string;
+  /** Value before the change */
+  before: unknown;
+  /** Value after the change */
+  after: unknown;
+}
+
+/**
+ * An attribute change on a matched node
+ */
+export interface AttributeChange {
+  /** Unique ID for this attribute change */
+  id: string;
+  /** The node type affected */
+  nodeType: string;
+  /** Path in original document */
+  pathA: number[];
+  /** Path in new document */
+  pathB: number[];
+  /** List of attribute differences */
+  changes: AttrDiff[];
+}
+
+/**
+ * Record of matched nodes between documents
+ */
+export interface NodeMatch {
+  /** Path in original document */
+  pathA: number[];
+  /** Path in new document */
+  pathB: number[];
+  /** Fingerprint used for matching */
+  fingerprint: string;
+  /** Similarity score (0.0 - 1.0) */
+  similarity: number;
+}
+
+/**
+ * Node with computed fingerprint (used in alignment)
+ */
+export interface FingerprintedNode {
+  /** The original node */
+  node: ProseMirrorJSON;
+  /** Content-based fingerprint */
+  fingerprint: string;
+  /** Path in the document tree */
+  path: number[];
+  /** Child fingerprinted nodes */
+  children?: FingerprintedNode[];
+}
+
+/**
+ * Extended diff result with structural awareness
+ */
+export interface HybridDiffResult extends DiffResult {
+  /** Structural changes (rows, paragraphs, list items added/removed) */
+  structuralChanges: StructuralChange[];
+  /** Attribute changes on matched nodes */
+  attributeChanges: AttributeChange[];
+  /** Node matching information (for debugging) */
+  nodeMatches: NodeMatch[];
+}
+
+/**
+ * Metadata for the Structural Changes Pane
+ * Generated during merge, stored in component state
+ */
+export interface StructuralChangeInfo {
+  /** Shared ID across all marks in this structural change */
+  id: string;
+  /** Type of structural change */
+  type: StructuralChangeType;
+  /** The node type affected */
+  nodeType: string;
+  /** Human-readable location (e.g., "Table 1, Row 3") */
+  location: string;
+  /** Truncated content preview */
+  preview: string;
+  /** Author of the change */
+  author: TrackChangeAuthor;
+  /** ISO timestamp */
+  date: string;
+  /** For attribute changes, the specific diffs */
+  attrChanges?: AttrDiff[];
+}
+
+// ============================================================================
 // Comparison Result Types
 // ============================================================================
 
@@ -105,10 +236,14 @@ export interface ComparisonResult {
   deletions: number;
   /** Number of format changes */
   formatChanges: number;
+  /** Number of structural changes (rows, paragraphs, etc.) */
+  structuralChanges: number;
   /** Human-readable summary strings */
   summary: string[];
   /** The merged JSON document with track changes */
   mergedJson: ProseMirrorJSON;
+  /** Metadata for structural changes (for the pane) */
+  structuralChangeInfos: StructuralChangeInfo[];
 }
 
 // ============================================================================
@@ -119,11 +254,17 @@ export interface ComparisonResult {
  * Location context for a change
  */
 export interface ChangeLocation {
-  nodeType: 'heading' | 'paragraph' | 'listItem' | 'tableCell' | 'unknown';
+  nodeType: 'heading' | 'paragraph' | 'listItem' | 'tableCell' | 'table' | 'image' | 'unknown';
   headingLevel?: number;
   paragraphIndex?: number;
   sectionTitle?: string;
   description: string;
+  /** Table coordinates (for table-related changes) */
+  tableCoords?: { row: number; column: number };
+  /** List item index */
+  listIndex?: number;
+  /** List nesting depth */
+  listDepth?: number;
 }
 
 /**
@@ -147,6 +288,14 @@ export interface EnrichedChange {
   charCount?: number;
   /** The sentence or clause containing the change */
   surroundingText?: string;
+  /** Structural change type (for block-level changes) */
+  structuralType?: StructuralChangeType;
+  /** Attribute changes (for attribute-only changes) */
+  attributeChanges?: AttrDiff[];
+  /** Table position (for table-related changes) */
+  tablePosition?: { row: number; column: number };
+  /** List position (for list-related changes) */
+  listPosition?: { index: number; depth: number };
 }
 
 // ============================================================================
@@ -220,6 +369,11 @@ export interface DocumentInfo {
 // ============================================================================
 
 /**
+ * Position of the structural changes pane
+ */
+export type StructuralPanePosition = 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left';
+
+/**
  * Props for DocxDiffEditor component
  */
 export interface DocxDiffEditorProps {
@@ -258,6 +412,19 @@ export interface DocxDiffEditorProps {
 
   /** Editor container className */
   editorClassName?: string;
+
+  // -------------------------------------------------------------------------
+  // Structural Changes Pane Options
+  // -------------------------------------------------------------------------
+
+  /** Position of structural changes pane (default: 'bottom-right') */
+  structuralPanePosition?: StructuralPanePosition;
+
+  /** Start with pane collapsed (default: false) */
+  structuralPaneCollapsed?: boolean;
+
+  /** Hide structural changes pane entirely (default: false) */
+  hideStructuralPane?: boolean;
 }
 
 /**

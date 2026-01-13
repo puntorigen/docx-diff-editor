@@ -1,4 +1,5 @@
 import * as react from 'react';
+import react__default from 'react';
 
 /**
  * Type definitions for DocxDiffEditor
@@ -55,6 +56,114 @@ interface DiffResult {
     summary: string[];
 }
 /**
+ * Type of structural change
+ */
+type StructuralChangeType = 'rowInsert' | 'rowDelete' | 'columnInsert' | 'columnDelete' | 'paragraphInsert' | 'paragraphDelete' | 'listItemInsert' | 'listItemDelete' | 'imageInsert' | 'imageDelete' | 'attrChange';
+/**
+ * A structural change (node added/removed/moved)
+ */
+interface StructuralChange {
+    /** Unique ID shared across all marks in this structural change */
+    id: string;
+    /** Type of structural change */
+    type: StructuralChangeType;
+    /** The node type affected (e.g., 'tableRow', 'paragraph', 'listItem') */
+    nodeType: string;
+    /** Path to the node in the document tree */
+    path: number[];
+    /** The affected node */
+    node: ProseMirrorJSON;
+    /** For moves: original path */
+    fromPath?: number[];
+    /** For moves: new path */
+    toPath?: number[];
+}
+/**
+ * Single attribute difference
+ */
+interface AttrDiff {
+    /** Attribute key (e.g., "borders.top.color") */
+    key: string;
+    /** Value before the change */
+    before: unknown;
+    /** Value after the change */
+    after: unknown;
+}
+/**
+ * An attribute change on a matched node
+ */
+interface AttributeChange {
+    /** Unique ID for this attribute change */
+    id: string;
+    /** The node type affected */
+    nodeType: string;
+    /** Path in original document */
+    pathA: number[];
+    /** Path in new document */
+    pathB: number[];
+    /** List of attribute differences */
+    changes: AttrDiff[];
+}
+/**
+ * Record of matched nodes between documents
+ */
+interface NodeMatch {
+    /** Path in original document */
+    pathA: number[];
+    /** Path in new document */
+    pathB: number[];
+    /** Fingerprint used for matching */
+    fingerprint: string;
+    /** Similarity score (0.0 - 1.0) */
+    similarity: number;
+}
+/**
+ * Node with computed fingerprint (used in alignment)
+ */
+interface FingerprintedNode {
+    /** The original node */
+    node: ProseMirrorJSON;
+    /** Content-based fingerprint */
+    fingerprint: string;
+    /** Path in the document tree */
+    path: number[];
+    /** Child fingerprinted nodes */
+    children?: FingerprintedNode[];
+}
+/**
+ * Extended diff result with structural awareness
+ */
+interface HybridDiffResult extends DiffResult {
+    /** Structural changes (rows, paragraphs, list items added/removed) */
+    structuralChanges: StructuralChange[];
+    /** Attribute changes on matched nodes */
+    attributeChanges: AttributeChange[];
+    /** Node matching information (for debugging) */
+    nodeMatches: NodeMatch[];
+}
+/**
+ * Metadata for the Structural Changes Pane
+ * Generated during merge, stored in component state
+ */
+interface StructuralChangeInfo {
+    /** Shared ID across all marks in this structural change */
+    id: string;
+    /** Type of structural change */
+    type: StructuralChangeType;
+    /** The node type affected */
+    nodeType: string;
+    /** Human-readable location (e.g., "Table 1, Row 3") */
+    location: string;
+    /** Truncated content preview */
+    preview: string;
+    /** Author of the change */
+    author: TrackChangeAuthor;
+    /** ISO timestamp */
+    date: string;
+    /** For attribute changes, the specific diffs */
+    attrChanges?: AttrDiff[];
+}
+/**
  * Result returned after comparing two documents
  */
 interface ComparisonResult {
@@ -66,20 +175,33 @@ interface ComparisonResult {
     deletions: number;
     /** Number of format changes */
     formatChanges: number;
+    /** Number of structural changes (rows, paragraphs, etc.) */
+    structuralChanges: number;
     /** Human-readable summary strings */
     summary: string[];
     /** The merged JSON document with track changes */
     mergedJson: ProseMirrorJSON;
+    /** Metadata for structural changes (for the pane) */
+    structuralChangeInfos: StructuralChangeInfo[];
 }
 /**
  * Location context for a change
  */
 interface ChangeLocation {
-    nodeType: 'heading' | 'paragraph' | 'listItem' | 'tableCell' | 'unknown';
+    nodeType: 'heading' | 'paragraph' | 'listItem' | 'tableCell' | 'table' | 'image' | 'unknown';
     headingLevel?: number;
     paragraphIndex?: number;
     sectionTitle?: string;
     description: string;
+    /** Table coordinates (for table-related changes) */
+    tableCoords?: {
+        row: number;
+        column: number;
+    };
+    /** List item index */
+    listIndex?: number;
+    /** List nesting depth */
+    listDepth?: number;
 }
 /**
  * Format change details
@@ -101,6 +223,20 @@ interface EnrichedChange {
     charCount?: number;
     /** The sentence or clause containing the change */
     surroundingText?: string;
+    /** Structural change type (for block-level changes) */
+    structuralType?: StructuralChangeType;
+    /** Attribute changes (for attribute-only changes) */
+    attributeChanges?: AttrDiff[];
+    /** Table position (for table-related changes) */
+    tablePosition?: {
+        row: number;
+        column: number;
+    };
+    /** List position (for list-related changes) */
+    listPosition?: {
+        index: number;
+        depth: number;
+    };
 }
 /**
  * Author information for track changes
@@ -154,6 +290,10 @@ interface DocumentInfo {
     pages: number;
 }
 /**
+ * Position of the structural changes pane
+ */
+type StructuralPanePosition = 'top-right' | 'bottom-right' | 'top-left' | 'bottom-left';
+/**
  * Props for DocxDiffEditor component
  */
 interface DocxDiffEditorProps {
@@ -181,6 +321,12 @@ interface DocxDiffEditorProps {
     toolbarClassName?: string;
     /** Editor container className */
     editorClassName?: string;
+    /** Position of structural changes pane (default: 'bottom-right') */
+    structuralPanePosition?: StructuralPanePosition;
+    /** Start with pane collapsed (default: false) */
+    structuralPaneCollapsed?: boolean;
+    /** Hide structural changes pane entirely (default: false) */
+    hideStructuralPane?: boolean;
 }
 /**
  * Ref methods exposed by DocxDiffEditor
@@ -222,6 +368,38 @@ interface DocxDiffEditorRef {
  * DocxDiffEditor Component
  */
 declare const DocxDiffEditor: react.ForwardRefExoticComponent<DocxDiffEditorProps & react.RefAttributes<DocxDiffEditorRef>>;
+
+/**
+ * Structural Changes Pane Component
+ *
+ * A floating, collapsible panel that displays structural changes
+ * (table rows, list items, images, etc.) with Accept/Reject controls.
+ *
+ * Uses SuperDoc's acceptTrackedChangeById/rejectTrackedChangeById commands
+ * to handle accept/reject actions.
+ */
+
+interface StructuralChangesPaneProps {
+    /** Array of structural changes to display */
+    changes: StructuralChangeInfo[];
+    /** Position of the pane */
+    position?: StructuralPanePosition;
+    /** Start collapsed? */
+    initiallyCollapsed?: boolean;
+    /** Callback when a change is accepted */
+    onAccept: (changeId: string) => void;
+    /** Callback when a change is rejected */
+    onReject: (changeId: string) => void;
+    /** Callback when Accept All is clicked */
+    onAcceptAll: () => void;
+    /** Callback when Reject All is clicked */
+    onRejectAll: () => void;
+    /** Callback when a change is clicked (for navigation) */
+    onNavigate?: (changeId: string) => void;
+    /** Callback when pane is dismissed */
+    onDismiss?: () => void;
+}
+declare const StructuralChangesPane: react__default.FC<StructuralChangesPaneProps>;
 
 /**
  * Content Resolver Service
@@ -303,12 +481,181 @@ declare function createTrackFormatMark(before: ProseMirrorMark[], after: ProseMi
  * Change Context Extractor
  * Extracts enriched changes with semantic context from merged document.
  * Provides surrounding text so the LLM can understand what the change is about.
+ *
+ * Updated to include structural change information (tables, lists, images).
  */
 
 /**
  * Main entry point - extract enriched changes from merged document
  */
 declare function extractEnrichedChanges(mergedJson: ProseMirrorJSON): EnrichedChange[];
+/**
+ * Extract enriched changes with structural change infos included.
+ * This merges inline text changes with structural change metadata.
+ */
+declare function extractEnrichedChangesWithStructural(mergedJson: ProseMirrorJSON, structuralInfos: StructuralChangeInfo[]): EnrichedChange[];
+
+/**
+ * Node Fingerprint Service
+ *
+ * Generates content-based fingerprints for ProseMirror nodes.
+ * Fingerprints are used to match nodes between documents during diffing.
+ *
+ * Key principle: Two nodes with the same content (ignoring styles/attrs)
+ * should produce the same or similar fingerprints.
+ */
+
+/**
+ * Generate a fingerprint for a single node.
+ *
+ * Fingerprint format by node type:
+ * - text: "t:{hash}"
+ * - paragraph: "p:{hash}"
+ * - heading: "h{level}:{hash}"
+ * - table: "table:{rowCount}:{hash}"
+ * - tableRow: "tr:{cellCount}:{hash}"
+ * - tableCell: "tc:{hash}"
+ * - listItem: "li:{hash}"
+ * - image: "img:{srcHash}"
+ * - hardBreak: "br"
+ * - horizontalRule: "hr"
+ * - other: "{type}:{hash}"
+ */
+declare function generateFingerprint(node: ProseMirrorJSON): string;
+
+/**
+ * Node Aligner Service
+ *
+ * Aligns nodes between two documents using fingerprints and LCS algorithm.
+ * Produces matched pairs, insertions, and deletions.
+ */
+
+/**
+ * Result of aligning two node sequences
+ */
+interface AlignmentResult {
+    /** Nodes that match between documents */
+    matched: NodeMatch[];
+    /** Nodes only in document A (deleted) */
+    deletions: FingerprintedNode[];
+    /** Nodes only in document B (inserted) */
+    insertions: FingerprintedNode[];
+}
+/**
+ * Align top-level blocks between two documents.
+ */
+declare function alignDocuments(docA: ProseMirrorJSON, docB: ProseMirrorJSON): AlignmentResult;
+
+/**
+ * Table Block Differ Service
+ *
+ * Specialized diffing logic for tables:
+ * - Row insertions/deletions
+ * - Column insertions/deletions
+ * - Cell-level content changes
+ * - Table/cell attribute changes
+ */
+
+/**
+ * Result of diffing two tables
+ */
+interface TableDiffResult {
+    /** Row-level structural changes */
+    rowChanges: StructuralChange[];
+    /** Column-level structural changes (detected from cell patterns) */
+    columnChanges: StructuralChange[];
+    /** Cell-level matches for content diffing */
+    cellMatches: NodeMatch[];
+    /** Attribute changes on the table itself */
+    tableAttrChanges: AttributeChange | null;
+    /** Attribute changes on cells */
+    cellAttrChanges: AttributeChange[];
+}
+/**
+ * Diff two tables and return all detected changes.
+ */
+declare function diffTables(tableA: ProseMirrorJSON, tableB: ProseMirrorJSON, tablePathA: number[], tablePathB: number[]): TableDiffResult;
+/**
+ * Check if a node is a table.
+ */
+declare function isTable(node: ProseMirrorJSON): boolean;
+
+/**
+ * List Block Differ Service
+ *
+ * Specialized diffing logic for lists:
+ * - List item insertions/deletions
+ * - List item reordering detection
+ * - Nested list handling
+ */
+
+/**
+ * Result of diffing two lists
+ */
+interface ListDiffResult {
+    /** Item-level structural changes */
+    itemChanges: StructuralChange[];
+    /** Item matches for content diffing */
+    itemMatches: NodeMatch[];
+    /** Nested list changes (recursive) */
+    nestedChanges: ListDiffResult[];
+}
+/**
+ * Check if a node is a list (ordered or unordered).
+ */
+declare function isList(node: ProseMirrorJSON): boolean;
+/**
+ * Diff two lists and return all detected changes.
+ */
+declare function diffLists(listA: ProseMirrorJSON, listB: ProseMirrorJSON, listPathA: number[], listPathB: number[], depth?: number): ListDiffResult;
+
+/**
+ * Non-Text Node Differ Service
+ *
+ * Handles diffing of atomic non-text nodes:
+ * - Images
+ * - Horizontal rules
+ * - Page breaks
+ * - Embedded objects (equations, etc.)
+ */
+
+/**
+ * Check if a node is an image.
+ */
+declare function isImage(node: ProseMirrorJSON): boolean;
+/**
+ * Check if a node is an atomic (non-text, leaf) node.
+ */
+declare function isAtomicNode(node: ProseMirrorJSON): boolean;
+/**
+ * Diff images between two documents.
+ */
+declare function diffImages(docA: ProseMirrorJSON, docB: ProseMirrorJSON): {
+    inserted: StructuralChange[];
+    deleted: StructuralChange[];
+};
+
+/**
+ * Block Level Merger Service
+ *
+ * Handles merging of structural changes (tables, lists, images)
+ * with shared IDs for all marks within a structural change.
+ *
+ * This allows the Structural Changes Pane to accept/reject
+ * entire structural units (e.g., a whole table row) with a single action.
+ */
+
+/**
+ * Process structural changes and generate marked blocks with shared IDs.
+ */
+declare function processStructuralChanges(docA: ProseMirrorNode, docB: ProseMirrorNode, author?: TrackChangeAuthor): {
+    changes: StructuralChange[];
+    infos: StructuralChangeInfo[];
+};
+/**
+ * Generate a summary of structural changes.
+ */
+declare function generateStructuralChangeSummary(infos: StructuralChangeInfo[]): string[];
 
 /**
  * Constants for DocxDiffEditor
@@ -363,4 +710,4 @@ declare function getBlankTemplateBlob(): Blob;
  */
 declare function isValidDocxFile(file: File): boolean;
 
-export { CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocumentProperties, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FormatChange, type FormatDetails, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type TrackChangeAuthor, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, extractEnrichedChanges, getBlankTemplateBlob, getBlankTemplateFile, isProseMirrorJSON, isValidDocxFile, mergeDocuments, parseDocxFile };
+export { type AttrDiff, type AttributeChange, CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocumentProperties, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FingerprintedNode, type FormatChange, type FormatDetails, type HybridDiffResult, type NodeMatch, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type StructuralChange, type StructuralChangeInfo, type StructuralChangeType, StructuralChangesPane, type StructuralPanePosition, type TrackChangeAuthor, alignDocuments, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, diffImages, diffLists, diffTables, extractEnrichedChanges, extractEnrichedChangesWithStructural, generateFingerprint, generateStructuralChangeSummary, getBlankTemplateBlob, getBlankTemplateFile, isAtomicNode, isImage, isList, isProseMirrorJSON, isTable, isValidDocxFile, mergeDocuments, parseDocxFile, processStructuralChanges };

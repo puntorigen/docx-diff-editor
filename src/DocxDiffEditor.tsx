@@ -27,12 +27,16 @@ import type {
   EnrichedChange,
   DocumentInfo,
   DocumentProperties,
+  StructuralChangeInfo,
 } from './types';
+
+import { StructuralChangesPane } from './components/StructuralChangesPane';
 
 import { parseDocxFile, detectContentType, isProseMirrorJSON } from './services/contentResolver';
 import { diffDocuments } from './services/documentDiffer';
 import { mergeDocuments } from './services/mergeDocuments';
 import { extractEnrichedChanges } from './services/changeContextExtractor';
+import { processStructuralChanges, generateStructuralChangeSummary } from './services/blockLevelMerger';
 import { DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, TRACK_CHANGE_PERMISSIONS, TIMEOUTS } from './constants';
 
 /**
@@ -105,6 +109,10 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
       className = '',
       toolbarClassName = '',
       editorClassName = '',
+      // Structural Changes Pane options
+      structuralPanePosition = 'bottom-right',
+      structuralPaneCollapsed = false,
+      hideStructuralPane = false,
     },
     ref
   ) {
@@ -124,6 +132,19 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
     const [sourceJson, setSourceJson] = useState<ProseMirrorJSON | null>(null);
     const [mergedJson, setMergedJson] = useState<ProseMirrorJSON | null>(null);
     const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
+    
+    // Structural changes pane state
+    const [structuralChanges, setStructuralChanges] = useState<StructuralChangeInfo[]>([]);
+    const [isPaneDismissed, setIsPaneDismissed] = useState(false);
+    
+    // Ref to track structural change IDs for bubble sync
+    // (needed because onCommentsUpdate callback captures stale state)
+    const structuralChangeIdsRef = useRef<Set<string>>(new Set());
+
+    // Keep the ref in sync with state
+    useEffect(() => {
+      structuralChangeIdsRef.current = new Set(structuralChanges.map((c) => c.id));
+    }, [structuralChanges]);
 
     // Generate unique IDs for this instance
     const instanceId = useRef(`dde-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
@@ -174,6 +195,109 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         onError?.(error);
       },
       [onError]
+    );
+
+    // =========================================================================
+    // Structural Changes Pane Handlers
+    // =========================================================================
+
+    /**
+     * Accept a structural change by ID
+     */
+    const handleAcceptStructuralChange = useCallback((changeId: string) => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.acceptTrackedChangeById) {
+        editor.commands.acceptTrackedChangeById(changeId);
+        // Remove from state
+        setStructuralChanges((prev) => prev.filter((c) => c.id !== changeId));
+      }
+    }, []);
+
+    /**
+     * Reject a structural change by ID
+     */
+    const handleRejectStructuralChange = useCallback((changeId: string) => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.rejectTrackedChangeById) {
+        editor.commands.rejectTrackedChangeById(changeId);
+        // Remove from state
+        setStructuralChanges((prev) => prev.filter((c) => c.id !== changeId));
+      }
+    }, []);
+
+    /**
+     * Accept all structural changes
+     */
+    const handleAcceptAllStructural = useCallback(() => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.acceptTrackedChangeById) {
+        for (const change of structuralChanges) {
+          editor.commands.acceptTrackedChangeById(change.id);
+        }
+        setStructuralChanges([]);
+      }
+    }, [structuralChanges]);
+
+    /**
+     * Reject all structural changes
+     */
+    const handleRejectAllStructural = useCallback(() => {
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.rejectTrackedChangeById) {
+        for (const change of structuralChanges) {
+          editor.commands.rejectTrackedChangeById(change.id);
+        }
+        setStructuralChanges([]);
+      }
+    }, [structuralChanges]);
+
+    /**
+     * Navigate to a structural change in the document
+     */
+    const handleNavigateToChange = useCallback((changeId: string) => {
+      // Find the change
+      const change = structuralChanges.find((c) => c.id === changeId);
+      if (!change) return;
+
+      // Try to scroll to the change using SuperDoc's API
+      const editor = superdocRef.current?.activeEditor;
+      if (editor?.commands?.focus) {
+        // Focus the editor first
+        editor.commands.focus();
+      }
+      
+      // Note: Actual scroll-to-change would require knowing the position
+      // in the document. This is a placeholder for future enhancement.
+      // For now, the visual highlight from the track change marks
+      // should help users locate the change.
+    }, [structuralChanges]);
+
+    /**
+     * Handle pane dismiss
+     */
+    const handlePaneDismiss = useCallback(() => {
+      setIsPaneDismissed(true);
+    }, []);
+
+    /**
+     * Handle SuperDoc comments update (for bubble sync)
+     * When user accepts/rejects via SuperDoc bubbles, we sync our state
+     */
+    const handleCommentsUpdate = useCallback(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (event: any) => {
+        // Check if this is a resolved track change event
+        if (event?.type === 'resolved' && event?.comment?.trackedChange) {
+          const commentId = event.comment.commentId;
+          
+          // Check if this is one of our structural changes
+          if (structuralChangeIdsRef.current.has(commentId)) {
+            // Remove from our state - the change was handled via SuperDoc bubble
+            setStructuralChanges((prev) => prev.filter((c) => c.id !== commentId));
+          }
+        }
+      },
+      []
     );
 
     /**
@@ -234,6 +358,8 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               rulers: showRulers,
               user: DEFAULT_SUPERDOC_USER,
               permissionResolver,
+              // Bubble sync: listen for track changes resolved via SuperDoc bubbles
+              onCommentsUpdate: handleCommentsUpdate,
             };
 
             if (options.document) {
@@ -588,18 +714,36 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               }
             }
 
+            // Process structural changes (tables, lists, images)
+            const { changes: structChanges, infos: structInfos } = processStructuralChanges(
+              sourceJson,
+              newJson,
+              author
+            );
+
+            // Store structural changes for the pane
+            setStructuralChanges(structInfos);
+            setIsPaneDismissed(false); // Reset dismissed state on new comparison
+
             // Build result
             const insertions = diff.segments.filter((s) => s.type === 'insert').length;
             const deletions = diff.segments.filter((s) => s.type === 'delete').length;
             const formatChanges = diff.formatChanges?.length || 0;
+            const structuralChangeCount = structInfos.length;
+
+            // Combine summaries
+            const structuralSummary = generateStructuralChangeSummary(structInfos);
+            const combinedSummary = [...diff.summary, ...structuralSummary];
 
             const result: ComparisonResult = {
-              totalChanges: insertions + deletions + formatChanges,
+              totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
               insertions,
               deletions,
               formatChanges,
-              summary: diff.summary,
+              structuralChanges: structuralChangeCount,
+              summary: combinedSummary,
               mergedJson: merged,
+              structuralChangeInfos: structInfos,
             };
 
             onComparisonComplete?.(result);
@@ -1051,6 +1195,21 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           ref={containerRef}
           className={`dde-editor ${editorClassName}`.trim()}
         />
+
+        {/* Structural Changes Pane */}
+        {!hideStructuralPane && !isPaneDismissed && structuralChanges.length > 0 && (
+          <StructuralChangesPane
+            changes={structuralChanges}
+            position={structuralPanePosition}
+            initiallyCollapsed={structuralPaneCollapsed}
+            onAccept={handleAcceptStructuralChange}
+            onReject={handleRejectStructuralChange}
+            onAcceptAll={handleAcceptAllStructural}
+            onRejectAll={handleRejectAllStructural}
+            onNavigate={handleNavigateToChange}
+            onDismiss={handlePaneDismiss}
+          />
+        )}
       </div>
     );
   }

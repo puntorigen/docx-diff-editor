@@ -31,6 +31,7 @@ const ownStyles = [
   'loading.css',
   'error.css',
   'track-changes.css',
+  'structural-pane.css',
 ].map(file => 
   fs.readFileSync(path.join(ROOT, 'src/styles', file), 'utf8')
 ).join('\n');

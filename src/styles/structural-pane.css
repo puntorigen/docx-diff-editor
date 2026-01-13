@@ -1,0 +1,388 @@
+/**
+ * Structural Changes Pane Styles
+ * 
+ * A floating, collapsible panel for displaying structural changes.
+ * Styled to match SuperDoc's bubble appearance.
+ */
+
+/* ============================================================================
+   Pane Container
+   ============================================================================ */
+
+.dde-structural-pane {
+  position: absolute;
+  z-index: 1000;
+  width: 320px;
+  max-height: 400px;
+  background: var(--dde-bg-color, #ffffff);
+  border: 1px solid var(--dde-border-color, #e5e7eb);
+  border-radius: var(--dde-radius-lg, 0.75rem);
+  box-shadow: 
+    0 10px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  
+  /* Animation */
+  animation: dde-pane-slide-in 0.3s ease-out;
+  transition: 
+    transform 0.3s ease,
+    opacity 0.3s ease,
+    max-height 0.3s ease;
+}
+
+/* Position variants */
+.dde-pane--top-right {
+  top: var(--dde-spacing-md, 1rem);
+  right: var(--dde-spacing-md, 1rem);
+}
+
+.dde-pane--bottom-right {
+  bottom: var(--dde-spacing-md, 1rem);
+  right: var(--dde-spacing-md, 1rem);
+}
+
+.dde-pane--top-left {
+  top: var(--dde-spacing-md, 1rem);
+  left: var(--dde-spacing-md, 1rem);
+}
+
+.dde-pane--bottom-left {
+  bottom: var(--dde-spacing-md, 1rem);
+  left: var(--dde-spacing-md, 1rem);
+}
+
+/* Collapsed state */
+.dde-pane--collapsed {
+  max-height: 44px;
+}
+
+/* Animating out */
+.dde-pane--animating-out {
+  animation: dde-pane-slide-out 0.3s ease-in forwards;
+}
+
+/* Slide in animation */
+@keyframes dde-pane-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Slide out animation */
+@keyframes dde-pane-slide-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+}
+
+/* ============================================================================
+   Header
+   ============================================================================ */
+
+.dde-pane__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--dde-spacing-sm, 0.5rem) var(--dde-spacing-md, 1rem);
+  background: var(--dde-bg-muted, #f9fafb);
+  border-bottom: 1px solid var(--dde-border-color, #e5e7eb);
+  cursor: pointer;
+  user-select: none;
+  min-height: 44px;
+}
+
+.dde-pane__header:hover {
+  background: var(--dde-bg-color, #ffffff);
+}
+
+.dde-pane__title {
+  display: flex;
+  align-items: center;
+  gap: var(--dde-spacing-sm, 0.5rem);
+  font-weight: 600;
+  color: var(--dde-text-color, #374151);
+  font-size: 0.875rem;
+}
+
+.dde-pane__icon {
+  font-size: 1rem;
+}
+
+.dde-pane__label {
+  display: flex;
+  align-items: center;
+  gap: var(--dde-spacing-sm, 0.5rem);
+}
+
+.dde-pane__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.375rem;
+  background: var(--dde-primary-color, #007acc);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+}
+
+.dde-pane__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.dde-pane__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--dde-text-muted, #6b7280);
+  font-size: 1.25rem;
+  font-weight: 400;
+  cursor: pointer;
+  border-radius: var(--dde-radius-sm, 0.25rem);
+  transition: 
+    background-color var(--dde-transition, 150ms ease),
+    color var(--dde-transition, 150ms ease);
+}
+
+.dde-pane__btn:hover {
+  background: var(--dde-border-color, #e5e7eb);
+  color: var(--dde-text-color, #374151);
+}
+
+.dde-pane__btn--close:hover {
+  background: var(--dde-delete-color, #ef4444);
+  color: white;
+}
+
+/* ============================================================================
+   Body
+   ============================================================================ */
+
+.dde-pane__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.dde-pane__empty {
+  padding: var(--dde-spacing-lg, 1.5rem);
+  text-align: center;
+  color: var(--dde-text-muted, #6b7280);
+  font-size: 0.875rem;
+}
+
+.dde-pane__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* ============================================================================
+   Change Item
+   ============================================================================ */
+
+.dde-pane__item {
+  padding: var(--dde-spacing-sm, 0.5rem) var(--dde-spacing-md, 1rem);
+  border-bottom: 1px solid var(--dde-border-color, #e5e7eb);
+  cursor: pointer;
+  transition: background-color var(--dde-transition, 150ms ease);
+}
+
+.dde-pane__item:last-child {
+  border-bottom: none;
+}
+
+.dde-pane__item:hover {
+  background: var(--dde-bg-muted, #f9fafb);
+}
+
+.dde-pane__item-header {
+  display: flex;
+  align-items: center;
+  gap: var(--dde-spacing-sm, 0.5rem);
+  margin-bottom: 0.25rem;
+}
+
+.dde-pane__item-icon {
+  font-size: 0.875rem;
+}
+
+.dde-pane__item-label {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  color: var(--dde-text-color, #374151);
+}
+
+.dde-pane__item-location {
+  font-size: 0.75rem;
+  color: var(--dde-text-muted, #6b7280);
+  margin-bottom: 0.25rem;
+}
+
+.dde-pane__item-preview {
+  font-size: 0.8125rem;
+  color: var(--dde-text-color, #374151);
+  line-height: 1.4;
+  max-height: 2.8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin-bottom: 0.375rem;
+}
+
+.dde-pane__item-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--dde-spacing-sm, 0.5rem);
+  font-size: 0.6875rem;
+  color: var(--dde-text-muted, #6b7280);
+  margin-bottom: 0.5rem;
+}
+
+.dde-pane__item-author {
+  font-weight: 500;
+}
+
+.dde-pane__item-date::before {
+  content: '•';
+  margin-right: var(--dde-spacing-sm, 0.5rem);
+}
+
+.dde-pane__item-actions {
+  display: flex;
+  gap: var(--dde-spacing-sm, 0.5rem);
+}
+
+/* ============================================================================
+   Action Buttons
+   ============================================================================ */
+
+.dde-pane__action {
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid;
+  border-radius: var(--dde-radius-sm, 0.25rem);
+  cursor: pointer;
+  transition: 
+    background-color var(--dde-transition, 150ms ease),
+    border-color var(--dde-transition, 150ms ease),
+    color var(--dde-transition, 150ms ease);
+}
+
+.dde-pane__action--accept {
+  background: transparent;
+  border-color: var(--dde-insert-color, #10b981);
+  color: var(--dde-insert-color, #10b981);
+}
+
+.dde-pane__action--accept:hover {
+  background: var(--dde-insert-color, #10b981);
+  color: white;
+}
+
+.dde-pane__action--reject {
+  background: transparent;
+  border-color: var(--dde-delete-color, #ef4444);
+  color: var(--dde-delete-color, #ef4444);
+}
+
+.dde-pane__action--reject:hover {
+  background: var(--dde-delete-color, #ef4444);
+  color: white;
+}
+
+/* ============================================================================
+   Footer
+   ============================================================================ */
+
+.dde-pane__footer {
+  display: flex;
+  gap: var(--dde-spacing-sm, 0.5rem);
+  padding: var(--dde-spacing-sm, 0.5rem) var(--dde-spacing-md, 1rem);
+  background: var(--dde-bg-muted, #f9fafb);
+  border-top: 1px solid var(--dde-border-color, #e5e7eb);
+}
+
+.dde-pane__bulk-btn {
+  flex: 1;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--dde-radius-md, 0.5rem);
+  cursor: pointer;
+  transition: 
+    background-color var(--dde-transition, 150ms ease),
+    transform var(--dde-transition, 150ms ease);
+}
+
+.dde-pane__bulk-btn:hover {
+  transform: translateY(-1px);
+}
+
+.dde-pane__bulk-btn:active {
+  transform: translateY(0);
+}
+
+.dde-pane__bulk-btn--accept {
+  background: var(--dde-insert-color, #10b981);
+  color: white;
+}
+
+.dde-pane__bulk-btn--accept:hover {
+  background: #059669;
+}
+
+.dde-pane__bulk-btn--reject {
+  background: var(--dde-delete-color, #ef4444);
+  color: white;
+}
+
+.dde-pane__bulk-btn--reject:hover {
+  background: #dc2626;
+}
+
+/* ============================================================================
+   Scrollbar Styling
+   ============================================================================ */
+
+.dde-pane__body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dde-pane__body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.dde-pane__body::-webkit-scrollbar-thumb {
+  background: var(--dde-border-color, #e5e7eb);
+  border-radius: 3px;
+}
+
+.dde-pane__body::-webkit-scrollbar-thumb:hover {
+  background: var(--dde-text-muted, #6b7280);
+}
