@@ -149,6 +149,9 @@ interface DocxDiffEditorRef {
 
   // Set document core properties (partial update)
   setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
+
+  // Parse HTML to ProseMirror JSON
+  parseHtml(html: string): Promise<ProseMirrorJSON>;
 }
 ```
 
@@ -249,6 +252,23 @@ await editorRef.current?.setProperties({
   keywords: 'report, quarterly, finance, 2026',
   modified: new Date(),
 });
+```
+
+## Parsing HTML to JSON
+
+Convert HTML strings to ProseMirror JSON without visible rendering:
+
+```tsx
+// Using the ref method (requires editor to be initialized)
+const json = await editorRef.current?.parseHtml('<h1>Title</h1><p>Content here</p>');
+console.log(json); // { type: 'doc', content: [...] }
+
+// Use with other methods
+await editorRef.current?.updateContent(json);
+
+// Or use the standalone function (requires SuperDoc class)
+import { parseHtmlToJson } from 'docx-diff-editor';
+const json = await parseHtmlToJson(htmlString, SuperDocClass);
 ```
 
 ## Customization

@@ -475,6 +475,9 @@ export interface DocxDiffEditorRef {
 
   /** Set document core properties (partial update) */
   setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
+
+  /** Parse HTML string to ProseMirror JSON (uses hidden SuperDoc instance) */
+  parseHtml(html: string): Promise<ProseMirrorJSON>;
 }
 
 // ============================================================================

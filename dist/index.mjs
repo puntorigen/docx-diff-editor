@@ -460,6 +460,76 @@ function isProseMirrorJSON(content) {
   const obj = content;
   return typeof obj.type === "string" && (obj.type === "doc" || Array.isArray(obj.content));
 }
+async function parseHtmlToJson(html, SuperDoc) {
+  const container = document.createElement("div");
+  container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
+  document.body.appendChild(container);
+  return new Promise((resolve, reject) => {
+    let superdoc = null;
+    let resolved = false;
+    const cleanup = () => {
+      setTimeout(() => {
+        if (superdoc) {
+          try {
+            const sd = superdoc;
+            superdoc = null;
+            sd.destroy?.();
+          } catch {
+          }
+        }
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, TIMEOUTS.CLEANUP_DELAY);
+    };
+    setTimeout(async () => {
+      if (resolved) return;
+      try {
+        superdoc = new SuperDoc({
+          selector: container,
+          html,
+          documentMode: "viewing",
+          rulers: false,
+          user: { name: "Parser", email: "parser@local" },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onReady: ({ superdoc: sd }) => {
+            if (resolved) return;
+            try {
+              const editor = sd?.activeEditor;
+              if (!editor) {
+                throw new Error("No active editor found");
+              }
+              const json = editor.getJSON();
+              resolved = true;
+              cleanup();
+              resolve(json);
+            } catch (err) {
+              resolved = true;
+              cleanup();
+              reject(err);
+            }
+          },
+          onException: ({ error: err }) => {
+            if (resolved) return;
+            resolved = true;
+            cleanup();
+            reject(err);
+          }
+        });
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            reject(new Error("HTML parsing timed out"));
+          }
+        }, TIMEOUTS.PARSE_TIMEOUT);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    }, 50);
+  });
+}
 async function parseDocxFile(file, SuperDoc) {
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
@@ -2865,6 +2935,16 @@ var DocxDiffEditor = forwardRef(
             console.warn("[DocxDiffEditor] Failed to set properties:", err);
             return false;
           }
+        },
+        /**
+         * Parse HTML string to ProseMirror JSON using a hidden SuperDoc instance.
+         * Useful for converting HTML content before using with other methods.
+         */
+        async parseHtml(html) {
+          if (!SuperDocRef.current) {
+            throw new Error("Editor not initialized");
+          }
+          return parseHtmlToJson(html, SuperDocRef.current);
         }
       }),
       [
@@ -2982,6 +3062,6 @@ function isValidDocxFile(file) {
   return validTypes.includes(file.type) || file.name.endsWith(".docx");
 }
 
-export { CSS_PREFIX, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, DocxDiffEditor, StructuralChangesPane, alignDocuments, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor_default as default, detectContentType, diffDocuments, diffImages, diffLists, diffTables, extractEnrichedChanges, extractEnrichedChangesWithStructural, generateFingerprint, generateStructuralChangeSummary, getBlankTemplateBlob, getBlankTemplateFile, isAtomicNode, isImage, isList, isProseMirrorJSON, isTable, isValidDocxFile, mergeDocuments, parseDocxFile, processStructuralChanges };
+export { CSS_PREFIX, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, DocxDiffEditor, StructuralChangesPane, alignDocuments, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor_default as default, detectContentType, diffDocuments, diffImages, diffLists, diffTables, extractEnrichedChanges, extractEnrichedChangesWithStructural, generateFingerprint, generateStructuralChangeSummary, getBlankTemplateBlob, getBlankTemplateFile, isAtomicNode, isImage, isList, isProseMirrorJSON, isTable, isValidDocxFile, mergeDocuments, parseDocxFile, parseHtmlToJson, processStructuralChanges };
 //# sourceMappingURL=index.mjs.map
 //# sourceMappingURL=index.mjs.map

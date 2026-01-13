@@ -362,6 +362,8 @@ interface DocxDiffEditorRef {
     getProperties(): Promise<DocumentProperties | null>;
     /** Set document core properties (partial update) */
     setProperties(properties: Partial<DocumentProperties>): Promise<boolean>;
+    /** Parse HTML string to ProseMirror JSON (uses hidden SuperDoc instance) */
+    parseHtml(html: string): Promise<ProseMirrorJSON>;
 }
 
 /**
@@ -420,6 +422,10 @@ declare function detectContentType(content: DocxContent): 'file' | 'html' | 'jso
  * Validate that content looks like ProseMirror JSON
  */
 declare function isProseMirrorJSON(content: unknown): boolean;
+/**
+ * Parse an HTML string into ProseMirror JSON using a hidden SuperDoc instance.
+ */
+declare function parseHtmlToJson(html: string, SuperDoc: SuperDocConstructor): Promise<ProseMirrorJSON>;
 /**
  * Parse a DOCX File into ProseMirror JSON using a hidden SuperDoc instance.
  */
@@ -710,4 +716,4 @@ declare function getBlankTemplateBlob(): Blob;
  */
 declare function isValidDocxFile(file: File): boolean;
 
-export { type AttrDiff, type AttributeChange, CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocumentProperties, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FingerprintedNode, type FormatChange, type FormatDetails, type HybridDiffResult, type NodeMatch, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type StructuralChange, type StructuralChangeInfo, type StructuralChangeType, StructuralChangesPane, type StructuralPanePosition, type TrackChangeAuthor, alignDocuments, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, diffImages, diffLists, diffTables, extractEnrichedChanges, extractEnrichedChangesWithStructural, generateFingerprint, generateStructuralChangeSummary, getBlankTemplateBlob, getBlankTemplateFile, isAtomicNode, isImage, isList, isProseMirrorJSON, isTable, isValidDocxFile, mergeDocuments, parseDocxFile, processStructuralChanges };
+export { type AttrDiff, type AttributeChange, CSS_PREFIX, type ChangeLocation, type ComparisonResult, DEFAULT_AUTHOR, DEFAULT_SUPERDOC_USER, type DiffResult, type DiffSegment, type DocumentInfo, type DocumentProperties, type DocxContent, DocxDiffEditor, type DocxDiffEditorProps, type DocxDiffEditorRef, type EnrichedChange, type FingerprintedNode, type FormatChange, type FormatDetails, type HybridDiffResult, type NodeMatch, type ProseMirrorJSON, type ProseMirrorMark, type ProseMirrorNode, type StructuralChange, type StructuralChangeInfo, type StructuralChangeType, StructuralChangesPane, type StructuralPanePosition, type TrackChangeAuthor, alignDocuments, createTrackDeleteMark, createTrackFormatMark, createTrackInsertMark, DocxDiffEditor as default, detectContentType, diffDocuments, diffImages, diffLists, diffTables, extractEnrichedChanges, extractEnrichedChangesWithStructural, generateFingerprint, generateStructuralChangeSummary, getBlankTemplateBlob, getBlankTemplateFile, isAtomicNode, isImage, isList, isProseMirrorJSON, isTable, isValidDocxFile, mergeDocuments, parseDocxFile, parseHtmlToJson, processStructuralChanges };

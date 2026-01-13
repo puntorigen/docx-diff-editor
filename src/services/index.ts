@@ -5,6 +5,7 @@
 export {
   detectContentType,
   parseDocxFile,
+  parseHtmlToJson,
   isProseMirrorJSON,
 } from './contentResolver';
 

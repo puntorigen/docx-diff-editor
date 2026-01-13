@@ -32,7 +32,7 @@ import type {
 
 import { StructuralChangesPane } from './components/StructuralChangesPane';
 
-import { parseDocxFile, detectContentType, isProseMirrorJSON } from './services/contentResolver';
+import { parseDocxFile, parseHtmlToJson, detectContentType, isProseMirrorJSON } from './services/contentResolver';
 import { diffDocuments } from './services/documentDiffer';
 import { mergeDocuments } from './services/mergeDocuments';
 import { extractEnrichedChanges } from './services/changeContextExtractor';
@@ -1126,6 +1126,18 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             console.warn('[DocxDiffEditor] Failed to set properties:', err);
             return false;
           }
+        },
+
+        /**
+         * Parse HTML string to ProseMirror JSON using a hidden SuperDoc instance.
+         * Useful for converting HTML content before using with other methods.
+         */
+        async parseHtml(html: string): Promise<ProseMirrorJSON> {
+          if (!SuperDocRef.current) {
+            throw new Error('Editor not initialized');
+          }
+
+          return parseHtmlToJson(html, SuperDocRef.current);
         },
       }),
       [

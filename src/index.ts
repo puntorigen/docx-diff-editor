@@ -56,9 +56,10 @@ export type {
 
 // Services (for advanced usage)
 export {
-  // Content detection
+  // Content detection & parsing
   detectContentType,
   parseDocxFile,
+  parseHtmlToJson,
   isProseMirrorJSON,
 
   // Diffing

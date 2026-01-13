@@ -38,6 +38,94 @@ export function isProseMirrorJSON(content: unknown): boolean {
 }
 
 /**
+ * Parse an HTML string into ProseMirror JSON using a hidden SuperDoc instance.
+ */
+export async function parseHtmlToJson(
+  html: string,
+  SuperDoc: SuperDocConstructor
+): Promise<ProseMirrorJSON> {
+  // Create a hidden container for the editor
+  const container = document.createElement('div');
+  container.style.cssText =
+    'position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;';
+  document.body.appendChild(container);
+
+  return new Promise((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let superdoc: any = null;
+    let resolved = false;
+
+    const cleanup = () => {
+      setTimeout(() => {
+        if (superdoc) {
+          try {
+            const sd = superdoc;
+            superdoc = null;
+            sd.destroy?.();
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, TIMEOUTS.CLEANUP_DELAY);
+    };
+
+    setTimeout(async () => {
+      if (resolved) return;
+
+      try {
+        superdoc = new SuperDoc({
+          selector: container,
+          html: html,
+          documentMode: 'viewing',
+          rulers: false,
+          user: { name: 'Parser', email: 'parser@local' },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          onReady: ({ superdoc: sd }: { superdoc: any }) => {
+            if (resolved) return;
+            try {
+              const editor = sd?.activeEditor;
+              if (!editor) {
+                throw new Error('No active editor found');
+              }
+
+              const json = editor.getJSON();
+              resolved = true;
+              cleanup();
+              resolve(json);
+            } catch (err) {
+              resolved = true;
+              cleanup();
+              reject(err);
+            }
+          },
+          onException: ({ error: err }: { error: Error }) => {
+            if (resolved) return;
+            resolved = true;
+            cleanup();
+            reject(err);
+          },
+        });
+
+        // Timeout
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            cleanup();
+            reject(new Error('HTML parsing timed out'));
+          }
+        }, TIMEOUTS.PARSE_TIMEOUT);
+      } catch (err) {
+        cleanup();
+        reject(err);
+      }
+    }, 50);
+  });
+}
+
+/**
  * Parse a DOCX File into ProseMirror JSON using a hidden SuperDoc instance.
  */
 export async function parseDocxFile(
