@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.53] - 2026-01-14
+
+### Changed
+
+- **`compareWith()` now compares against current editor content**: Previously, `compareWith()` always compared the given content against the originally loaded document from `setSource()`. Now it compares against the **current editor state**, with any existing track changes stripped/accepted first to create a clean baseline.
+
+### Behavior Change
+
+- **Old behavior**: `compareWith(newDoc)` compared `originalSource` vs `newDoc` (ignoring any edits made in the editor)
+- **New behavior**: `compareWith(newDoc)` compares `currentEditorContent` vs `newDoc`
+
+This is more intuitive for users who make edits in the editor and then want to compare their work against a new version. To compare against the original source document, simply call `setSource(originalDoc)` again before `compareWith()`.
+
+### Technical Details
+
+- Before comparing, the method now:
+  1. Gets current editor content via `activeEditor.getJSON()`
+  2. Strips all track marks using `acceptAllChangesInJson()` to create a clean baseline
+  3. Uses that clean baseline for the structural merge and diff
+  4. Updates `sourceJson` state to reflect this new baseline
+
 ## [1.0.52] - 2026-01-14
 
 ### Fixed

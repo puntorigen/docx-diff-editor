@@ -3177,17 +3177,27 @@ var DocxDiffEditor = forwardRef(
           }
         },
         /**
-         * Compare source with new content, show track changes
+         * Compare current editor content with new content, show track changes.
+         * 
+         * The comparison uses the current editor state (with any existing track
+         * changes accepted/stripped) as the baseline. This means if you've made
+         * edits or accepted previous comparisons, those become the new baseline.
+         * 
+         * To compare against the original source document, call setSource() again
+         * before compareWith().
          */
         async compareWith(content) {
           if (!SuperDocRef.current) {
             throw new Error("Editor not initialized");
           }
-          if (!sourceJson) {
-            throw new Error("No source document set. Call setSource() first.");
+          if (!superdocRef.current?.activeEditor) {
+            throw new Error("Editor not ready. Ensure a document is loaded first.");
           }
           setIsLoading(true);
           try {
+            const currentEditorJson = superdocRef.current.activeEditor.getJSON();
+            const cleanBaseline = acceptAllChangesInJson(currentEditorJson) || { type: "doc", content: [] };
+            setSourceJson(cleanBaseline);
             const contentType = detectContentType(content);
             let newJson;
             if (contentType === "file") {
@@ -3246,14 +3256,14 @@ var DocxDiffEditor = forwardRef(
             }
             const normalizedNewJson = normalizeRunProperties(newJson);
             const structuralResult = mergeWithStructuralAwareness(
-              sourceJson,
+              cleanBaseline,
               normalizedNewJson,
               author
             );
             const merged = structuralResult.mergedDoc;
             const structInfos = structuralResult.structuralInfos;
             setMergedJson(merged);
-            const diff = diffDocuments(sourceJson, newJson);
+            const diff = diffDocuments(cleanBaseline, newJson);
             setDiffResult(diff);
             if (superdocRef.current?.activeEditor) {
               setEditorContent(superdocRef.current.activeEditor, merged);

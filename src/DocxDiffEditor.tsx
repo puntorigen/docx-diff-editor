@@ -602,18 +602,33 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         },
 
         /**
-         * Compare source with new content, show track changes
+         * Compare current editor content with new content, show track changes.
+         * 
+         * The comparison uses the current editor state (with any existing track
+         * changes accepted/stripped) as the baseline. This means if you've made
+         * edits or accepted previous comparisons, those become the new baseline.
+         * 
+         * To compare against the original source document, call setSource() again
+         * before compareWith().
          */
         async compareWith(content: DocxContent): Promise<ComparisonResult> {
           if (!SuperDocRef.current) {
             throw new Error('Editor not initialized');
           }
-          if (!sourceJson) {
-            throw new Error('No source document set. Call setSource() first.');
+          if (!superdocRef.current?.activeEditor) {
+            throw new Error('Editor not ready. Ensure a document is loaded first.');
           }
 
           setIsLoading(true);
           try {
+            // Get current editor content and strip any existing track marks
+            // to create a clean baseline for comparison
+            const currentEditorJson = superdocRef.current.activeEditor.getJSON();
+            const cleanBaseline = acceptAllChangesInJson(currentEditorJson) || { type: 'doc', content: [] };
+            
+            // Update sourceJson to reflect this new baseline
+            // (so getSourceContent() returns what was used for comparison)
+            setSourceJson(cleanBaseline);
             const contentType = detectContentType(content);
             let newJson: ProseMirrorJSON;
 
@@ -687,7 +702,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             
             // Use structural merger for the main merge
             const structuralResult = mergeWithStructuralAwareness(
-              sourceJson,
+              cleanBaseline,
               normalizedNewJson,
               author
             );
@@ -698,7 +713,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             setMergedJson(merged);
             
             // Also keep the text-level diff for getDiffSegments() backward compat
-            const diff = diffDocuments(sourceJson, newJson);
+            const diff = diffDocuments(cleanBaseline, newJson);
             setDiffResult(diff);
 
             // Update editor with merged content and enable review mode

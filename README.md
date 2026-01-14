@@ -51,6 +51,10 @@ function App() {
     );
 
     console.log(`Found ${result.totalChanges} changes`);
+
+    // Note: Subsequent compareWith calls compare against current editor state
+    // (with track changes accepted), not the original source.
+    // To compare against original again, call setSource() first.
   };
 
   return (
@@ -117,7 +121,8 @@ interface DocxDiffEditorRef {
   // Set the source/base document
   setSource(content: DocxContent): Promise<void>;
 
-  // Compare and show track changes
+  // Compare current editor content with new content, show track changes
+  // Note: Compares against current editor state (not original source)
   compareWith(content: DocxContent): Promise<ComparisonResult>;
 
   // Get diff data
