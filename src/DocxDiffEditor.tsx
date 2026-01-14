@@ -732,6 +732,12 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               newJson = content as ProseMirrorJSON;
             }
 
+            // Clean any existing track marks from the new content.
+            // This ensures we always compare clean documents, even if the caller
+            // passes content that was derived from getContent() (which includes track marks).
+            // Without this, subsequent compareWith() calls would layer track marks.
+            const cleanNewJson = acceptAllChangesInJson(newJson) || { type: 'doc', content: [] };
+
             // =========================================================
             // STRUCTURAL MERGE (Phase 6b)
             // Instead of character-level-only merge, we now use the
@@ -744,7 +750,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             // Normalize runProperties on the new document to ensure
             // styles from marks are synced to runProperties for rendering.
             // This is a safety net for content that didn't come through parseHtml.
-            const normalizedNewJson = normalizeRunProperties(newJson);
+            const normalizedNewJson = normalizeRunProperties(cleanNewJson);
             
             // Use structural merger for the main merge
             const structuralResult = mergeWithStructuralAwareness(
@@ -759,7 +765,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             setMergedJson(merged);
             
             // Also keep the text-level diff for getDiffSegments() backward compat
-            const diff = diffDocuments(cleanBaseline, newJson);
+            const diff = diffDocuments(cleanBaseline, cleanNewJson);
             setDiffResult(diff);
 
             // Update editor with merged content and enable review mode

@@ -3278,7 +3278,8 @@ var DocxDiffEditor = forwardRef(
               }
               newJson = content;
             }
-            const normalizedNewJson = normalizeRunProperties(newJson);
+            const cleanNewJson = acceptAllChangesInJson(newJson) || { type: "doc", content: [] };
+            const normalizedNewJson = normalizeRunProperties(cleanNewJson);
             const structuralResult = mergeWithStructuralAwareness(
               cleanBaseline,
               normalizedNewJson,
@@ -3287,7 +3288,7 @@ var DocxDiffEditor = forwardRef(
             const merged = structuralResult.mergedDoc;
             const structInfos = structuralResult.structuralInfos;
             setMergedJson(merged);
-            const diff = diffDocuments(cleanBaseline, newJson);
+            const diff = diffDocuments(cleanBaseline, cleanNewJson);
             setDiffResult(diff);
             if (superdocRef.current?.activeEditor) {
               setEditorContent(superdocRef.current.activeEditor, merged);

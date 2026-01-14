@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.55] - 2026-01-14
+
+### Fixed
+
+- **Subsequent `compareWith()` calls no longer layer track marks**: When calling `compareWith()` multiple times, previous track changes would accumulate instead of being replaced. This happened when the new content was derived from `getContent()` (which includes track marks). Now, both the editor baseline AND the incoming content are cleaned of track marks before comparison.
+
+### Technical Details
+
+- **Root cause**: If you called `getContent()`, cloned it, modified it, and passed it to `compareWith()`, the cloned content still had track marks from the previous comparison. These old marks were preserved in the merge, creating layered track changes.
+
+- **Solution**: Added `acceptAllChangesInJson(newJson)` to clean the incoming content before merging. Now both sides of the comparison are guaranteed to be clean:
+  - `cleanBaseline` = current editor content with track marks accepted
+  - `cleanNewJson` = incoming content with track marks accepted (new in v1.0.55)
+
+- This makes `compareWith()` more robust - callers don't need to worry about cleaning content before passing it.
+
 ## [1.0.54] - 2026-01-14
 
 ### Fixed
