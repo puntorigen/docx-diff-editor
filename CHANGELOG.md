@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.57] - 2026-01-14
+
+### Fixed
+
+- **Format change detection now works for bold, italic, and other simple marks**: The `hasDefinedAttributes` function in `documentDiffer.ts` was incorrectly returning `false` for marks like `{ type: "bold", attrs: { value: null } }`, causing format changes to not be detected.
+
+### Technical Details
+
+- **Root cause**: The function assumed marks like bold/italic would have NO `attrs` property. But SuperDoc's HTML parsing creates them with `attrs: { value: null }`. The logic checked if attr values were non-null, which failed for these marks.
+
+- **The trace for `[{ type: "bold", attrs: { value: null } }]`**:
+  1. Mark HAS `attrs`, so `!mark.attrs` check didn't help
+  2. `attrs.value` is `null`, so value check failed
+  3. Fallback `marks.some((m) => !m.attrs)` also failed
+  4. Returned `false` → format change not detected!
+
+- **Solution**: Added `INHERENT_FORMAT_MARKS` set containing mark types that represent formatting by their presence alone:
+  - `bold`, `italic`, `strike`, `underline`, `code`, `subscript`, `superscript`
+  - These marks return `true` regardless of their attr values
+
+- **Updated logic**:
+  ```typescript
+  if (INHERENT_FORMAT_MARKS.has(mark.type)) {
+    return true;  // Bold/italic/etc are defined by type alone
+  }
+  ```
+
 ## [1.0.56] - 2026-01-14
 
 ### Fixed

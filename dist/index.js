@@ -1110,17 +1110,31 @@ function getMarksAtPosition(spans, pos) {
   }
   return [];
 }
+var INHERENT_FORMAT_MARKS = /* @__PURE__ */ new Set([
+  "bold",
+  "italic",
+  "strike",
+  "underline",
+  "code",
+  "subscript",
+  "superscript"
+]);
 function hasDefinedAttributes(marks) {
   if (!marks || marks.length === 0) return false;
   for (const mark of marks) {
-    if (!mark.attrs) continue;
+    if (INHERENT_FORMAT_MARKS.has(mark.type)) {
+      return true;
+    }
+    if (!mark.attrs) {
+      return true;
+    }
     for (const value of Object.values(mark.attrs)) {
-      if (value !== void 0 && value !== null) {
+      if (value !== void 0 && value !== null && value !== "") {
         return true;
       }
     }
   }
-  return marks.some((m) => !m.attrs);
+  return false;
 }
 function detectFormatChanges(spansA, spansB, segments) {
   const formatChanges = [];

@@ -124,25 +124,51 @@ function getMarksAtPosition(spans: TextSpan[], pos: number): ProseMirrorMark[] {
 }
 
 /**
- * Check if marks have any defined (non-undefined/null) attribute values.
- * Returns false if marks array is empty or all marks have only undefined attrs.
+ * Mark types that represent formatting by their mere presence.
+ * These marks are "defined" regardless of their attr values.
+ * For example, { type: "bold", attrs: { value: null } } is still a bold mark.
+ */
+const INHERENT_FORMAT_MARKS = new Set([
+  'bold',
+  'italic',
+  'strike',
+  'underline',
+  'code',
+  'subscript',
+  'superscript',
+]);
+
+/**
+ * Check if marks have any defined formatting.
+ * Returns true if:
+ * - Any mark is an inherent format mark (bold, italic, etc.) regardless of attrs
+ * - Any mark has non-null/undefined attribute values (like textStyle with color)
+ * Returns false if marks array is empty or contains no meaningful formatting.
  */
 function hasDefinedAttributes(marks: ProseMirrorMark[]): boolean {
   if (!marks || marks.length === 0) return false;
 
   for (const mark of marks) {
-    // Marks without attrs (like simple bold/italic) are considered defined
-    if (!mark.attrs) continue;
+    // Inherent format marks are defined by their type alone
+    // (e.g., { type: "bold", attrs: { value: null } } is still bold)
+    if (INHERENT_FORMAT_MARKS.has(mark.type)) {
+      return true;
+    }
 
+    // Marks without attrs are considered defined (legacy behavior)
+    if (!mark.attrs) {
+      return true;
+    }
+
+    // Check if any attr value is meaningful (non-null/undefined)
     for (const value of Object.values(mark.attrs)) {
-      if (value !== undefined && value !== null) {
+      if (value !== undefined && value !== null && value !== '') {
         return true;
       }
     }
   }
 
-  // If we only have marks without attrs, they count as defined
-  return marks.some((m) => !m.attrs);
+  return false;
 }
 
 /**
