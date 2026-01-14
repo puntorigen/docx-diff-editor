@@ -154,16 +154,62 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
     const toolbarId = `dde-toolbar-${instanceId.current}`;
 
     /**
+     * Sanitize ProseMirror JSON to remove empty text nodes and clean up empty containers.
+     * ProseMirror throws "Empty text nodes are not allowed" if text nodes have empty strings.
+     * This function recursively cleans the JSON to prevent that error.
+     */
+    const sanitizeJson = useCallback((node: ProseMirrorJSON): ProseMirrorJSON | null => {
+      // Handle text nodes - remove if empty
+      if (node.type === 'text') {
+        // Empty string is not allowed
+        if (!node.text || node.text === '') {
+          return null;
+        }
+        // Valid text node - preserve with all marks
+        return node;
+      }
+
+      // Handle nodes with content array
+      if (node.content && Array.isArray(node.content)) {
+        // Recursively sanitize children
+        const cleanedContent = node.content
+          .map((child: ProseMirrorJSON) => sanitizeJson(child))
+          .filter((child: ProseMirrorJSON | null): child is ProseMirrorJSON => child !== null);
+
+        // For 'run' nodes: if no content left, remove the run entirely
+        // (a run with no text is useless)
+        if (node.type === 'run' && cleanedContent.length === 0) {
+          return null;
+        }
+
+        // Return node with cleaned content (or undefined if empty)
+        return {
+          ...node,
+          content: cleanedContent.length > 0 ? cleanedContent : undefined,
+        };
+      }
+
+      // Node without content - return as-is
+      return node;
+    }, []);
+
+    /**
      * Set content in the editor using ProseMirror transaction
      */
     const setEditorContent = useCallback((editor: SuperDocInstance, json: ProseMirrorJSON) => {
       const { state, view } = editor;
       if (state?.doc && view && json.content) {
-        const newDoc = state.schema.nodeFromJSON(json);
+        // Sanitize JSON to remove empty text nodes (ProseMirror doesn't allow them)
+        const sanitized = sanitizeJson(json);
+        if (!sanitized || !sanitized.content) {
+          console.warn('[DocxDiffEditor] Sanitized JSON has no content');
+          return;
+        }
+        const newDoc = state.schema.nodeFromJSON(sanitized);
         const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
         view.dispatch(tr);
       }
-    }, []);
+    }, [sanitizeJson]);
 
     /**
      * Enable track changes review mode

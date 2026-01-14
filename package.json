@@ -1,6 +1,6 @@
 {
   "name": "docx-diff-editor",
-  "version": "1.0.53",
+  "version": "1.0.54",
   "description": "React component for DOCX document comparison with track changes visualization",
   "license": "Apache-2.0",
   "author": "Pablo Schaffner",

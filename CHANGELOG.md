@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.54] - 2026-01-14
+
+### Fixed
+
+- **Empty text nodes no longer cause errors**: ProseMirror throws `RangeError: Empty text nodes are not allowed` when loading JSON with empty text nodes (e.g., `{ type: 'text', text: '' }`). This could happen when content was replaced with empty strings. Now, `setEditorContent` sanitizes the JSON before loading.
+
+### Technical Details
+
+- **New `sanitizeJson()` function** in `DocxDiffEditor.tsx` that recursively:
+  1. Removes text nodes with empty strings
+  2. Removes `run` nodes that become empty after cleaning
+  3. Preserves all marks on valid text nodes
+  4. Returns cleaned JSON safe for ProseMirror
+
+- Applied in `setEditorContent()` before `schema.nodeFromJSON()` to catch all edge cases
+
 ## [1.0.53] - 2026-01-14
 
 ### Changed

@@ -2882,14 +2882,38 @@ var DocxDiffEditor = react.forwardRef(
     const instanceId = react.useRef(`dde-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
     const editorId = `dde-editor-${instanceId.current}`;
     const toolbarId = `dde-toolbar-${instanceId.current}`;
+    const sanitizeJson = react.useCallback((node) => {
+      if (node.type === "text") {
+        if (!node.text || node.text === "") {
+          return null;
+        }
+        return node;
+      }
+      if (node.content && Array.isArray(node.content)) {
+        const cleanedContent = node.content.map((child) => sanitizeJson(child)).filter((child) => child !== null);
+        if (node.type === "run" && cleanedContent.length === 0) {
+          return null;
+        }
+        return {
+          ...node,
+          content: cleanedContent.length > 0 ? cleanedContent : void 0
+        };
+      }
+      return node;
+    }, []);
     const setEditorContent = react.useCallback((editor, json) => {
       const { state, view } = editor;
       if (state?.doc && view && json.content) {
-        const newDoc = state.schema.nodeFromJSON(json);
+        const sanitized = sanitizeJson(json);
+        if (!sanitized || !sanitized.content) {
+          console.warn("[DocxDiffEditor] Sanitized JSON has no content");
+          return;
+        }
+        const newDoc = state.schema.nodeFromJSON(sanitized);
         const tr = state.tr.replaceWith(0, state.doc.content.size, newDoc.content);
         view.dispatch(tr);
       }
-    }, []);
+    }, [sanitizeJson]);
     const enableReviewMode = react.useCallback((sd) => {
       if (sd.setTrackedChangesPreferences) {
         sd.setTrackedChangesPreferences({ mode: "review", enabled: true });
