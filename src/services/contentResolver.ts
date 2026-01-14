@@ -88,26 +88,6 @@ export async function parseHtmlToJson(
     };
 
     /**
-     * Create a mock ClipboardEvent with proper getData() support.
-     * This is needed because pasteHTML internally calls event.clipboardData.getData().
-     */
-    const createMockPasteEvent = (htmlContent: string): ClipboardEvent => {
-      // Create a DataTransfer object to hold the clipboard data
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData('text/html', htmlContent);
-      dataTransfer.setData('text/plain', ''); // Some handlers check for plain text too
-
-      // Create the ClipboardEvent with our DataTransfer
-      const event = new ClipboardEvent('paste', {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dataTransfer,
-      });
-
-      return event;
-    };
-
-    /**
      * Attempt the paste approach (preserves styles)
      */
     const tryPasteApproach = (
@@ -322,20 +302,44 @@ function syncNumberingToParent(
 }
 
 /**
+ * Create a mock ClipboardEvent with proper getData() support.
+ * This is needed because pasteHTML internally calls event.clipboardData.getData().
+ */
+function createMockPasteEvent(htmlContent: string): ClipboardEvent {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData('text/html', htmlContent);
+  dataTransfer.setData('text/plain', '');
+
+  return new ClipboardEvent('paste', {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: dataTransfer,
+  });
+}
+
+/**
  * Parse HTML using a linked child editor from the main SuperDoc instance.
  * 
- * This approach solves the list numbering problem: when parsing HTML with lists
- * in an isolated SuperDoc instance, the numbering definitions are stored in that
- * instance's editor.converter.numbering. When the parsed JSON is spliced into
- * the main document, the main editor doesn't have those definitions, causing crashes.
+ * This approach combines two critical features:
  * 
- * Solution: After the child editor parses the HTML, we manually sync the numbering
- * definitions from the child to the parent before extracting the JSON. This ensures
- * the parent editor has all necessary definitions when the content is later applied.
+ * 1. **Style preservation**: Uses the "paste" approach (view.pasteHTML) instead of
+ *    the "import" approach (html option). The import path calls stripHtmlStyles()
+ *    which removes CSS styles. The paste path preserves inline styles.
+ * 
+ * 2. **List numbering sync**: Creates a linked child editor and manually syncs
+ *    numbering definitions to the parent editor, preventing crashes when parsed
+ *    content with lists is later applied via compareWith().
+ * 
+ * Flow:
+ * 1. Create linked child editor with minimal empty HTML ('<p></p>')
+ * 2. Wait for child editor to be ready
+ * 3. Use view.pasteHTML() to paste the actual HTML (preserves styles)
+ * 4. Manually sync numbering definitions from child to parent
+ * 5. Return the parsed JSON
  * 
  * @param html - HTML string to parse
  * @param mainEditor - The main SuperDoc editor instance (must have createChildEditor)
- * @returns ProseMirror JSON with numbering definitions synced to main document
+ * @returns ProseMirror JSON with styles preserved and numbering synced
  */
 export async function parseHtmlWithLinkedEditor(
   html: string,
@@ -369,28 +373,52 @@ export async function parseHtmlWithLinkedEditor(
       }, TIMEOUTS.CLEANUP_DELAY);
     };
 
-    try {
-      // Use the main editor's createChildEditor method
-      mainEditor.createChildEditor({
-        element: container,
-        html: html,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onCreate: ({ editor: localEditor }: { editor: any }) => {
+    /**
+     * Use the paste approach on the child editor to preserve styles
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pasteAndExtract = (editor: any) => {
+      try {
+        if (!editor?.view?.pasteHTML) {
+          throw new Error('pasteHTML not available on child editor');
+        }
+
+        // Focus the editor (required for some operations)
+        editor.commands?.focus?.();
+
+        // Select all content and delete it to start fresh
+        if (editor.commands?.selectAll && editor.commands?.deleteSelection) {
+          editor.commands.selectAll();
+          editor.commands.deleteSelection();
+        }
+
+        // Create a mock paste event with proper clipboardData
+        const mockEvent = createMockPasteEvent(html);
+
+        // Use pasteHTML which goes through the paste path
+        // This path does NOT call stripHtmlStyles(), preserving inline styles
+        editor.view.pasteHTML(html, mockEvent);
+
+        // Small delay to let the paste operation complete
+        setTimeout(() => {
           if (resolved) return;
-          
+
           try {
-            childEditor = localEditor;
-            
             // CRITICAL: Manually sync numbering definitions from child to parent
             // This must happen BEFORE getJSON() so the parent has all definitions
             // when the parsed content is later applied via compareWith()
-            syncNumberingToParent(localEditor, mainEditor);
-            
-            const json = localEditor.getJSON();
-            
+            syncNumberingToParent(editor, mainEditor);
+
+            const json = editor.getJSON();
+
+            // Verify we got content
+            if (!json?.content?.length) {
+              throw new Error('Paste produced empty document');
+            }
+
             // Normalize runProperties to ensure styles render correctly
             const normalizedJson = normalizeRunProperties(json);
-            
+
             resolved = true;
             cleanup();
             resolve(normalizedJson);
@@ -399,6 +427,27 @@ export async function parseHtmlWithLinkedEditor(
             cleanup();
             reject(err);
           }
+        }, 100);
+      } catch (err) {
+        resolved = true;
+        cleanup();
+        reject(err);
+      }
+    };
+
+    try {
+      // Create linked child editor with EMPTY HTML (not the actual content)
+      // We'll use pasteHTML to insert the actual content, which preserves styles
+      mainEditor.createChildEditor({
+        element: container,
+        html: '<p></p>', // Minimal empty document - actual HTML pasted via pasteHTML
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onCreate: ({ editor: localEditor }: { editor: any }) => {
+          if (resolved) return;
+          childEditor = localEditor;
+          
+          // Now paste the actual HTML using the paste approach
+          pasteAndExtract(localEditor);
         },
         onError: (error: Error) => {
           if (resolved) return;

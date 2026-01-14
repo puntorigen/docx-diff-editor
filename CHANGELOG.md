@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.61] - 2026-01-14
+
+### Fixed
+
+- **`parseHtmlWithLinkedEditor()` now preserves inline styles**: The previous version used the `html` option when creating the child editor, which goes through SuperDoc's import path that calls `stripHtmlStyles()`. Now uses the paste approach (`view.pasteHTML()`) which preserves inline styles like color, font-size, font-weight, etc.
+
+### Technical Details
+
+- **The problem**: When passing `html` directly to `createChildEditor({ html: ... })`:
+  - SuperDoc's import path calls `stripHtmlStyles(content)` 
+  - This removes all CSS styles except `text-align`
+  - Bold, colors, font sizes, etc. were being lost
+
+- **The solution**: Combines paste approach with linked child editor:
+  1. Create linked child editor with minimal empty HTML (`'<p></p>'`)
+  2. Wait for `onCreate` callback
+  3. Use `view.pasteHTML(html, mockEvent)` to paste actual content
+  4. The paste path does NOT strip styles
+  5. Sync numbering definitions to parent (from v1.0.60)
+  6. Extract and return JSON
+
+- **Result**: Both style preservation AND list numbering sync work together.
+
 ## [1.0.60] - 2026-01-14
 
 ### Fixed

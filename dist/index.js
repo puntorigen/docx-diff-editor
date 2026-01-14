@@ -830,17 +830,6 @@ async function parseHtmlToJson(html, SuperDoc) {
         }
       }, TIMEOUTS.CLEANUP_DELAY);
     };
-    const createMockPasteEvent = (htmlContent) => {
-      const dataTransfer = new DataTransfer();
-      dataTransfer.setData("text/html", htmlContent);
-      dataTransfer.setData("text/plain", "");
-      const event = new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: dataTransfer
-      });
-      return event;
-    };
     const tryPasteApproach = (sd, onSuccess, onFail) => {
       try {
         const editor = sd?.activeEditor;
@@ -994,6 +983,16 @@ function syncNumberingToParent(childEditor, parentEditor) {
     console.warn("[syncNumberingToParent] Failed to sync numbering definitions:", err);
   }
 }
+function createMockPasteEvent(htmlContent) {
+  const dataTransfer = new DataTransfer();
+  dataTransfer.setData("text/html", htmlContent);
+  dataTransfer.setData("text/plain", "");
+  return new ClipboardEvent("paste", {
+    bubbles: true,
+    cancelable: true,
+    clipboardData: dataTransfer
+  });
+}
 async function parseHtmlWithLinkedEditor(html, mainEditor) {
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
@@ -1015,17 +1014,26 @@ async function parseHtmlWithLinkedEditor(html, mainEditor) {
         }
       }, TIMEOUTS.CLEANUP_DELAY);
     };
-    try {
-      mainEditor.createChildEditor({
-        element: container,
-        html,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        onCreate: ({ editor: localEditor }) => {
+    const pasteAndExtract = (editor) => {
+      try {
+        if (!editor?.view?.pasteHTML) {
+          throw new Error("pasteHTML not available on child editor");
+        }
+        editor.commands?.focus?.();
+        if (editor.commands?.selectAll && editor.commands?.deleteSelection) {
+          editor.commands.selectAll();
+          editor.commands.deleteSelection();
+        }
+        const mockEvent = createMockPasteEvent(html);
+        editor.view.pasteHTML(html, mockEvent);
+        setTimeout(() => {
           if (resolved) return;
           try {
-            childEditor = localEditor;
-            syncNumberingToParent(localEditor, mainEditor);
-            const json = localEditor.getJSON();
+            syncNumberingToParent(editor, mainEditor);
+            const json = editor.getJSON();
+            if (!json?.content?.length) {
+              throw new Error("Paste produced empty document");
+            }
             const normalizedJson = normalizeRunProperties(json);
             resolved = true;
             cleanup();
@@ -1035,6 +1043,23 @@ async function parseHtmlWithLinkedEditor(html, mainEditor) {
             cleanup();
             reject(err);
           }
+        }, 100);
+      } catch (err) {
+        resolved = true;
+        cleanup();
+        reject(err);
+      }
+    };
+    try {
+      mainEditor.createChildEditor({
+        element: container,
+        html: "<p></p>",
+        // Minimal empty document - actual HTML pasted via pasteHTML
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onCreate: ({ editor: localEditor }) => {
+          if (resolved) return;
+          childEditor = localEditor;
+          pasteAndExtract(localEditor);
         },
         onError: (error) => {
           if (resolved) return;
