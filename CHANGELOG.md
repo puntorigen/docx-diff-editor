@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.56] - 2026-01-14
+
+### Fixed
+
+- **Bold, italic, and other format marks now render correctly after `compareWith()`**: Format changes like bold, italic, underline were not visually rendered in the editor after comparison, even though the marks were correctly applied. The text would appear normal despite having a `bold` mark.
+
+### Technical Details
+
+- **Root cause**: `normalizeRunProperties()` was called on the incoming document (`cleanNewJson`) but NOT on the merged result. The merge process creates text nodes with marks from the new document, but the parent `run` nodes come from the baseline and don't have `runProperties.bold` set.
+
+- **Solution**: Added a second `normalizeRunProperties()` call on the merged document before setting it in the editor:
+  ```typescript
+  const normalizedMerged = normalizeRunProperties(merged);
+  setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
+  ```
+
+- This ensures that after the merge, all marks on text nodes are synced to their parent run's `runProperties`, which SuperDoc needs for visual rendering.
+
+- **Affected marks**: `bold`, `italic`, `strike`, `underline`, `textStyle` (color, fontFamily, fontSize, etc.)
+
 ## [1.0.55] - 2026-01-14
 
 ### Fixed

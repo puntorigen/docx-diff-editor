@@ -762,7 +762,13 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             const merged = structuralResult.mergedDoc;
             const structInfos = structuralResult.structuralInfos;
             
-            setMergedJson(merged);
+            // Normalize runProperties on the MERGED document.
+            // The merge process creates text nodes with marks but may not
+            // sync runProperties on parent runs. This ensures bold, italic,
+            // color, etc. are properly reflected in runProperties for rendering.
+            const normalizedMerged = normalizeRunProperties(merged);
+            
+            setMergedJson(normalizedMerged);
             
             // Also keep the text-level diff for getDiffSegments() backward compat
             const diff = diffDocuments(cleanBaseline, cleanNewJson);
@@ -770,7 +776,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
 
             // Update editor with merged content and enable review mode
             if (superdocRef.current?.activeEditor) {
-              setEditorContent(superdocRef.current.activeEditor, merged);
+              setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
               enableReviewMode(superdocRef.current);
               
               // CRITICAL FIX: Trigger comment creation for track marks

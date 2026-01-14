@@ -3287,11 +3287,12 @@ var DocxDiffEditor = forwardRef(
             );
             const merged = structuralResult.mergedDoc;
             const structInfos = structuralResult.structuralInfos;
-            setMergedJson(merged);
+            const normalizedMerged = normalizeRunProperties(merged);
+            setMergedJson(normalizedMerged);
             const diff = diffDocuments(cleanBaseline, cleanNewJson);
             setDiffResult(diff);
             if (superdocRef.current?.activeEditor) {
-              setEditorContent(superdocRef.current.activeEditor, merged);
+              setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
               enableReviewMode(superdocRef.current);
               const sd = superdocRef.current;
               if (sd.commentsStore?.processLoadedDocxComments) {
