@@ -962,6 +962,30 @@ async function parseHtmlToJson(html, SuperDoc) {
     }, 50);
   });
 }
+function syncNumberingToParent(childEditor, parentEditor) {
+  try {
+    const childNumbering = childEditor?.converter?.numbering;
+    const parentNumbering = parentEditor?.converter?.numbering;
+    if (!childNumbering || !parentNumbering) {
+      return;
+    }
+    if (childNumbering.definitions) {
+      parentNumbering.definitions = {
+        ...parentNumbering.definitions,
+        ...childNumbering.definitions
+      };
+    }
+    if (childNumbering.abstracts) {
+      parentNumbering.abstracts = {
+        ...parentNumbering.abstracts,
+        ...childNumbering.abstracts
+      };
+    }
+    parentEditor.converter.numbering = parentNumbering;
+  } catch (err) {
+    console.warn("[syncNumberingToParent] Failed to sync numbering definitions:", err);
+  }
+}
 async function parseHtmlWithLinkedEditor(html, mainEditor) {
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
@@ -992,6 +1016,7 @@ async function parseHtmlWithLinkedEditor(html, mainEditor) {
           if (resolved) return;
           try {
             childEditor = localEditor;
+            syncNumberingToParent(localEditor, mainEditor);
             const json = localEditor.getJSON();
             const normalizedJson = normalizeRunProperties(json);
             resolved = true;

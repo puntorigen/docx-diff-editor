@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.60] - 2026-01-14
+
+### Fixed
+
+- **List numbering definitions now properly synced to main editor**: Added manual numbering sync in `parseHtmlWithLinkedEditor()` to fix list parsing crashes. SuperDoc's automatic `linkListDefinitionsChange` callback has a timing issue - the `list-definitions-change` event is emitted during editor construction before event listeners are registered.
+
+### Technical Details
+
+- **Root cause discovered**: When `createChildEditor` parses HTML with lists:
+  1. `flattenListsInHtml` → `flattenFoundList` calls `ListHelpers.generateNewListDefinition()`
+  2. This emits `list-definitions-change` event
+  3. But event listeners aren't registered yet (still in constructor)
+  4. So `linkListDefinitionsChange` never fires and numbering isn't synced
+
+- **Solution**: New `syncNumberingToParent()` helper function that:
+  1. Gets numbering from child editor: `childEditor.converter.numbering`
+  2. Merges `definitions` and `abstracts` into parent's numbering store
+  3. Called after `onCreate` fires (when parsing is complete) but before `getJSON()`
+
+- **This ensures**: When parsed content with lists is applied via `compareWith()`, the main editor already has the numbering definitions the list nodes reference.
+
 ## [1.0.59] - 2026-01-14
 
 ### Fixed

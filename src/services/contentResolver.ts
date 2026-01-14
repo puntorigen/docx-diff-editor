@@ -276,6 +276,52 @@ export async function parseHtmlToJson(
 }
 
 /**
+ * Manually sync numbering definitions from child editor to parent editor.
+ * 
+ * SuperDoc's createChildEditor has a linkListDefinitionsChange callback that should
+ * sync numbering automatically, but due to timing issues (event emitted during construction
+ * before listeners are registered), we need to manually sync after parsing completes.
+ * 
+ * This merges the child's numbering definitions and abstracts into the parent's store.
+ */
+function syncNumberingToParent(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  childEditor: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  parentEditor: any
+): void {
+  try {
+    const childNumbering = childEditor?.converter?.numbering;
+    const parentNumbering = parentEditor?.converter?.numbering;
+    
+    if (!childNumbering || !parentNumbering) {
+      return;
+    }
+
+    // Merge definitions (numId -> definition mapping)
+    if (childNumbering.definitions) {
+      parentNumbering.definitions = {
+        ...parentNumbering.definitions,
+        ...childNumbering.definitions,
+      };
+    }
+
+    // Merge abstracts (abstractNumId -> abstract definition mapping)
+    if (childNumbering.abstracts) {
+      parentNumbering.abstracts = {
+        ...parentNumbering.abstracts,
+        ...childNumbering.abstracts,
+      };
+    }
+
+    // Update the parent's converter numbering reference
+    parentEditor.converter.numbering = parentNumbering;
+  } catch (err) {
+    console.warn('[syncNumberingToParent] Failed to sync numbering definitions:', err);
+  }
+}
+
+/**
  * Parse HTML using a linked child editor from the main SuperDoc instance.
  * 
  * This approach solves the list numbering problem: when parsing HTML with lists
@@ -283,8 +329,9 @@ export async function parseHtmlToJson(
  * instance's editor.converter.numbering. When the parsed JSON is spliced into
  * the main document, the main editor doesn't have those definitions, causing crashes.
  * 
- * By using createChildEditor from the main editor, numbering definitions are
- * automatically synced to the parent via onListDefinitionsChange: linkListDefinitionsChange.
+ * Solution: After the child editor parses the HTML, we manually sync the numbering
+ * definitions from the child to the parent before extracting the JSON. This ensures
+ * the parent editor has all necessary definitions when the content is later applied.
  * 
  * @param html - HTML string to parse
  * @param mainEditor - The main SuperDoc editor instance (must have createChildEditor)
@@ -324,7 +371,6 @@ export async function parseHtmlWithLinkedEditor(
 
     try {
       // Use the main editor's createChildEditor method
-      // This automatically syncs numbering definitions via linkListDefinitionsChange
       mainEditor.createChildEditor({
         element: container,
         html: html,
@@ -334,6 +380,12 @@ export async function parseHtmlWithLinkedEditor(
           
           try {
             childEditor = localEditor;
+            
+            // CRITICAL: Manually sync numbering definitions from child to parent
+            // This must happen BEFORE getJSON() so the parent has all definitions
+            // when the parsed content is later applied via compareWith()
+            syncNumberingToParent(localEditor, mainEditor);
+            
             const json = localEditor.getJSON();
             
             // Normalize runProperties to ensure styles render correctly
