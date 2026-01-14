@@ -250,6 +250,13 @@ export interface ComparisonResult {
   mergedJson: ProseMirrorJSON;
   /** Metadata for structural changes (for the pane) */
   structuralChangeInfos: StructuralChangeInfo[];
+  /** 
+   * True if comparison fell back to direct content update (without track bubbles).
+   * This happens when SuperDoc's internal plugins crash on certain content structures
+   * (e.g., ordered lists with missing numbering definitions).
+   * The content is still applied correctly, but track change visualization is unavailable.
+   */
+  usedFallback?: boolean;
 }
 
 // ============================================================================

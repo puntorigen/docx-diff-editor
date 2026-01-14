@@ -774,46 +774,79 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             const diff = diffDocuments(cleanBaseline, cleanNewJson);
             setDiffResult(diff);
 
+            // Track whether we used fallback mode
+            let usedFallback = false;
+
             // Update editor with merged content and enable review mode
             if (superdocRef.current?.activeEditor) {
-              setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
-              enableReviewMode(superdocRef.current);
-              
-              // CRITICAL FIX: Trigger comment creation for track marks
-              // SuperDoc's track bubbles require comment entries in commentsStore.
-              // When we inject JSON with track marks via setEditorContent, no comments
-              // are created automatically. We need to call processLoadedDocxComments
-              // which internally calls createCommentForTrackChanges to:
-              // 1. Scan the document for track marks using getTrackChanges
-              // 2. Create comment entries for each track mark
-              // 3. This populates getFloatingComments which renders the bubbles
-              //
-              // Source reference: superdoc/dist/chunks/index-1n6qegaQ.es.js
-              // - Line 4212: processLoadedDocxComments function
-              // - Line 4247: setTimeout(() => createCommentForTrackChanges(editor))
-              // - Line 4250: createCommentForTrackChanges scans for track marks
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const sd = superdocRef.current as any;
-              if (sd.commentsStore?.processLoadedDocxComments) {
-                // Small delay to ensure editor state is fully updated
-                setTimeout(() => {
-                  try {
-                    sd.commentsStore.processLoadedDocxComments({
-                      superdoc: sd,
-                      editor: sd.activeEditor,
-                      comments: [], // Empty array - we just want to trigger createCommentForTrackChanges
-                      documentId: sd.activeEditor?.options?.documentId || 'primary',
-                    });
-                  } catch (err) {
-                    console.warn('[DocxDiffEditor] Failed to process track changes for bubbles:', err);
-                  }
-                }, 50);
+              try {
+                // Try the normal flow: apply merged content with track marks
+                setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
+                enableReviewMode(superdocRef.current);
+                
+                // CRITICAL FIX: Trigger comment creation for track marks
+                // SuperDoc's track bubbles require comment entries in commentsStore.
+                // When we inject JSON with track marks via setEditorContent, no comments
+                // are created automatically. We need to call processLoadedDocxComments
+                // which internally calls createCommentForTrackChanges to:
+                // 1. Scan the document for track marks using getTrackChanges
+                // 2. Create comment entries for each track mark
+                // 3. This populates getFloatingComments which renders the bubbles
+                //
+                // Source reference: superdoc/dist/chunks/index-1n6qegaQ.es.js
+                // - Line 4212: processLoadedDocxComments function
+                // - Line 4247: setTimeout(() => createCommentForTrackChanges(editor))
+                // - Line 4250: createCommentForTrackChanges scans for track marks
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const sd = superdocRef.current as any;
+                if (sd.commentsStore?.processLoadedDocxComments) {
+                  // Small delay to ensure editor state is fully updated
+                  setTimeout(() => {
+                    try {
+                      sd.commentsStore.processLoadedDocxComments({
+                        superdoc: sd,
+                        editor: sd.activeEditor,
+                        comments: [], // Empty array - we just want to trigger createCommentForTrackChanges
+                        documentId: sd.activeEditor?.options?.documentId || 'primary',
+                      });
+                    } catch (err) {
+                      console.warn('[DocxDiffEditor] Failed to process track changes for bubbles:', err);
+                    }
+                  }, 50);
+                }
+              } catch (contentErr) {
+                // FALLBACK: SuperDoc plugin crashed (e.g., list numbering with missing definitions)
+                // Apply the clean new content directly without track marks.
+                // This ensures the user's content update succeeds, even without track visualization.
+                console.warn(
+                  '[DocxDiffEditor] Failed to apply merged content with track changes. ' +
+                  'Falling back to direct content update without track bubbles.',
+                  contentErr
+                );
+                
+                usedFallback = true;
+                
+                try {
+                  // Apply the clean new content (without track marks)
+                  setEditorContent(superdocRef.current.activeEditor, normalizedNewJson);
+                  // Use normal editing mode since we don't have track changes
+                  setEditingMode(superdocRef.current);
+                } catch (fallbackErr) {
+                  // If even the fallback fails, something is seriously wrong
+                  console.error('[DocxDiffEditor] Fallback content update also failed:', fallbackErr);
+                  throw contentErr; // Re-throw the original error
+                }
               }
             }
 
-            // Store structural changes for the pane
-            setStructuralChanges(structInfos);
-            setIsPaneDismissed(false); // Reset dismissed state on new comparison
+            // Store structural changes for the pane (only if not in fallback mode)
+            if (!usedFallback) {
+              setStructuralChanges(structInfos);
+              setIsPaneDismissed(false); // Reset dismissed state on new comparison
+            } else {
+              // Clear structural changes in fallback mode since we can't show track bubbles
+              setStructuralChanges([]);
+            }
 
             // Build result
             // Note: insertions/deletions from text diff for backward compat,
@@ -821,13 +854,18 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             const insertions = diff.segments.filter((s) => s.type === 'insert').length;
             const deletions = diff.segments.filter((s) => s.type === 'delete').length;
             const formatChanges = diff.formatChanges?.length || 0;
-            const structuralChangeCount = structInfos.length;
+            const structuralChangeCount = usedFallback ? 0 : structInfos.length;
 
             // Combine summaries
             const combinedSummary = [...structuralResult.summary];
             if (diff.summary.length > 0 && structuralResult.summary.length === 0) {
               // Only add text-level summary if no structural changes
               combinedSummary.push(...diff.summary);
+            }
+            
+            // Add fallback notice to summary if applicable
+            if (usedFallback) {
+              combinedSummary.push('Note: Track change visualization unavailable for this content');
             }
 
             const result: ComparisonResult = {
@@ -837,8 +875,9 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               formatChanges,
               structuralChanges: structuralChangeCount,
               summary: combinedSummary,
-              mergedJson: merged,
-              structuralChangeInfos: structInfos,
+              mergedJson: usedFallback ? normalizedNewJson : merged,
+              structuralChangeInfos: usedFallback ? [] : structInfos,
+              usedFallback,
             };
 
             onComparisonComplete?.(result);

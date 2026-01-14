@@ -64,6 +64,13 @@ a {
 .presentation-editor__selection-caret {
   animation: superdoc-caret-blink 1.2s steps(2, start) infinite;
 }
+.presentation-editor__permission-overlay {
+  pointer-events: none;
+}
+.presentation-editor__permission-highlight {
+  border-radius: 2px;
+  background-color: rgba(199, 200, 217, 0.55);
+}
 @keyframes superdoc-caret-blink {
   0%,
   45% {
@@ -366,6 +373,13 @@ https://github.com/ProseMirror/prosemirror-tables/blob/master/demo/index.html
   mix-blend-mode: multiply;
 }
 /* Presentation Editor Remote Cursors - end */
+/* Footnotes */
+.sd-footnote-ref {
+  font-size: 0.75em;
+  line-height: 1;
+  vertical-align: super;
+  user-select: none;
+}
 /* Image placeholder */
 .ProseMirror placeholder {
   display: inline;
@@ -2310,32 +2324,32 @@ span[data-v-53e13009] {
   display: inline-block;
 }
 
-.change-type[data-v-dc2a79b5] {
+.change-type[data-v-f9956635] {
   font-style: italic;
   font-weight: 600;
   font-size: 10px;
   color: #555;
 }
-.tracked-change[data-v-dc2a79b5] {
+.tracked-change[data-v-f9956635] {
   font-size: 12px;
 }
-.tracked-change-text[data-v-dc2a79b5] {
+.tracked-change-text[data-v-f9956635] {
   color: #111;
 }
-.comment-separator[data-v-dc2a79b5] {
+.comment-separator[data-v-f9956635] {
   background-color: #dbdbdb;
   height: 1px;
   width: 100%;
   margin: 10px 0;
   font-weight: 400;
 }
-.existing-internal-input[data-v-dc2a79b5] {
+.existing-internal-input[data-v-f9956635] {
   margin-bottom: 10px;
 }
-.initial-internal-dropdown[data-v-dc2a79b5] {
+.initial-internal-dropdown[data-v-f9956635] {
   margin-top: 10px;
 }
-.comments-dialog[data-v-dc2a79b5] {
+.comments-dialog[data-v-f9956635] {
   display: flex;
   flex-direction: column;
   padding: 10px 15px;
@@ -2351,39 +2365,39 @@ span[data-v-53e13009] {
   min-width: 200px;
   width: 100%;
 }
-.is-active[data-v-dc2a79b5] {
+.is-active[data-v-f9956635] {
   z-index: 10;
 }
-.input-section[data-v-dc2a79b5] {
+.input-section[data-v-f9956635] {
   margin-top: 10px;
 }
-.sd-button[data-v-dc2a79b5] {
+.sd-button[data-v-f9956635] {
   font-size: 12px;
   margin-left: 5px;
 }
-.comment[data-v-dc2a79b5] {
+.comment[data-v-f9956635] {
   font-size: 13px;
   margin: 10px 0;
 }
-.is-resolved[data-v-dc2a79b5] {
+.is-resolved[data-v-f9956635] {
   background-color: #f0f0f0;
 }
-.comment-footer[data-v-dc2a79b5] {
+.comment-footer[data-v-f9956635] {
   margin: 5px 0 5px;
   display: flex;
   justify-content: flex-end;
   width: 100%;
 }
-.internal-dropdown[data-v-dc2a79b5] {
+.internal-dropdown[data-v-f9956635] {
   display: inline-block;
 }
-.comment-editing[data-v-dc2a79b5] {
+.comment-editing[data-v-f9956635] {
   padding-bottom: 10px;
 }
-.comment-editing button[data-v-dc2a79b5] {
+.comment-editing button[data-v-f9956635] {
   margin-left: 5px;
 }
-.tracked-change[data-v-dc2a79b5] {
+.tracked-change[data-v-f9956635] {
   margin: 0;
 }
 
@@ -2431,23 +2445,23 @@ span[data-v-53e13009] {
   background-color: #1355ff7f;
 }
 
-.comment-doc[data-v-d019784c] {
+.comment-doc[data-v-7d21d613] {
   position: relative;
 }
-.comments-layer[data-v-d019784c] {
+.comments-layer[data-v-7d21d613] {
   position: relative;
 }
-.sd-comment-anchor[data-v-d019784c] {
+.sd-comment-anchor[data-v-7d21d613] {
   position: absolute;
   cursor: pointer;
   z-index: 3;
   border-radius: 4px;
   transition: background-color 250ms ease;
 }
-.bypass[data-v-d019784c] {
+.bypass[data-v-7d21d613] {
   display: none;
 }
-.comments-container[data-v-d019784c] {
+.comments-container[data-v-7d21d613] {
   /* pointer-events: none;  */
 }
 
@@ -2570,46 +2584,46 @@ img[data-v-7dd69850] {
   display: none;
 }
 
-.superdoc[data-v-5196811d] {
+.superdoc[data-v-78737564] {
   display: flex;
 }
-.right-sidebar[data-v-5196811d] {
+.right-sidebar[data-v-78737564] {
   min-width: 320px;
 }
-.floating-comments[data-v-5196811d] {
+.floating-comments[data-v-78737564] {
   min-width: 300px;
   width: 300px;
 }
-.superdoc__layers[data-v-5196811d] {
+.superdoc__layers[data-v-78737564] {
   height: 100%;
   position: relative;
   box-sizing: border-box;
 }
-.superdoc__document[data-v-5196811d] {
+.superdoc__document[data-v-78737564] {
   width: 100%;
   position: relative;
 }
-.superdoc__sub-document[data-v-5196811d] {
+.superdoc__sub-document[data-v-78737564] {
   width: 100%;
   position: relative;
 }
-.superdoc__selection-layer[data-v-5196811d] {
+.superdoc__selection-layer[data-v-78737564] {
   position: absolute;
   min-width: 100%;
   min-height: 100%;
   z-index: 10;
   pointer-events: none;
 }
-.superdoc__temp-selection[data-v-5196811d] {
+.superdoc__temp-selection[data-v-78737564] {
   position: absolute;
 }
-.superdoc__comments-layer[data-v-5196811d] {
+.superdoc__comments-layer[data-v-78737564] {
   /* position: absolute; */
   top: 0;
   height: 100%;
   position: relative;
 }
-.superdoc__right-sidebar[data-v-5196811d] {
+.superdoc__right-sidebar[data-v-78737564] {
   width: 320px;
   min-width: 320px;
   padding: 0 10px;
@@ -2619,14 +2633,14 @@ img[data-v-7dd69850] {
 }
 
 /* Tools styles */
-.tools[data-v-5196811d] {
+.tools[data-v-78737564] {
   position: absolute;
   z-index: 3;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.tools .tool-icon[data-v-5196811d] {
+.tools .tool-icon[data-v-78737564] {
   font-size: 20px;
   border-radius: 12px;
   border: none;
@@ -2634,7 +2648,7 @@ img[data-v-7dd69850] {
   background-color: #dbdbdb;
   cursor: pointer;
 }
-.tools-item[data-v-5196811d] {
+.tools-item[data-v-78737564] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2644,10 +2658,10 @@ img[data-v-7dd69850] {
   border-radius: 12px;
   cursor: pointer;
 }
-.tools-item i[data-v-5196811d] {
+.tools-item i[data-v-78737564] {
   cursor: pointer;
 }
-.superdoc__tools-icon[data-v-5196811d] {
+.superdoc__tools-icon[data-v-78737564] {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
@@ -2662,15 +2676,15 @@ img[data-v-7dd69850] {
 
 /* 834px is iPad screen size in portrait orientation */
 @media (max-width: 834px) {
-.superdoc .superdoc__layers[data-v-5196811d] {
+.superdoc .superdoc__layers[data-v-78737564] {
     margin: 0;
     border: 0 !important;
     box-shadow: none;
 }
-.superdoc__sub-document[data-v-5196811d] {
+.superdoc__sub-document[data-v-78737564] {
     max-width: 100%;
 }
-.superdoc__right-sidebar[data-v-5196811d] {
+.superdoc__right-sidebar[data-v-78737564] {
     padding: 10px;
     width: 55px;
     position: relative;
@@ -2678,7 +2692,7 @@ img[data-v-7dd69850] {
 }
 
 /* AI Writer styles */
-.ai-writer-container[data-v-5196811d] {
+.ai-writer-container[data-v-78737564] {
   position: fixed;
   z-index: 1000;
   background: white;
@@ -2696,13 +2710,13 @@ img[data-v-7dd69850] {
 } */
 
 /* Tools styles */
-.tools[data-v-5196811d] {
+.tools[data-v-78737564] {
   position: absolute;
   z-index: 3;
   display: flex;
   gap: 6px;
 }
-.tools .tool-icon[data-v-5196811d] {
+.tools .tool-icon[data-v-78737564] {
   font-size: 20px;
   border-radius: 12px;
   border: none;
@@ -2710,7 +2724,7 @@ img[data-v-7dd69850] {
   background-color: #dbdbdb;
   cursor: pointer;
 }
-.tools-item[data-v-5196811d] {
+.tools-item[data-v-78737564] {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2721,18 +2735,18 @@ img[data-v-7dd69850] {
   border-radius: 12px;
   cursor: pointer;
 }
-.tools-item i[data-v-5196811d] {
+.tools-item i[data-v-78737564] {
   cursor: pointer;
 }
-.superdoc__tools-icon[data-v-5196811d] {
+.superdoc__tools-icon[data-v-78737564] {
   width: 20px;
   height: 20px;
   flex-shrink: 0;
 }
-.ai-tool > svg[data-v-5196811d] {
+.ai-tool > svg[data-v-78737564] {
   fill: transparent;
 }
-.ai-tool[data-v-5196811d]::before {
+.ai-tool[data-v-78737564]::before {
   content: '';
   position: absolute;
   width: 20px;
@@ -2753,7 +2767,7 @@ img[data-v-7dd69850] {
   filter: brightness(1.2);
   transition: filter 0.2s ease;
 }
-.ai-tool[data-v-5196811d]:hover::before {
+.ai-tool[data-v-78737564]:hover::before {
   filter: brightness(1.3);
 }
 
@@ -5475,7 +5489,6 @@ img[data-v-7dd69850] {
 
 /* Structural Changes Pane - Floating panel for structural changes */
 /* @import './structural-pane.css'; */
-
 
 /**
  * CSS Variables for DocxDiffEditor

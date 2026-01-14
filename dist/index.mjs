@@ -3305,35 +3305,58 @@ var DocxDiffEditor = forwardRef(
             setMergedJson(normalizedMerged);
             const diff = diffDocuments(cleanBaseline, cleanNewJson);
             setDiffResult(diff);
+            let usedFallback = false;
             if (superdocRef.current?.activeEditor) {
-              setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
-              enableReviewMode(superdocRef.current);
-              const sd = superdocRef.current;
-              if (sd.commentsStore?.processLoadedDocxComments) {
-                setTimeout(() => {
-                  try {
-                    sd.commentsStore.processLoadedDocxComments({
-                      superdoc: sd,
-                      editor: sd.activeEditor,
-                      comments: [],
-                      // Empty array - we just want to trigger createCommentForTrackChanges
-                      documentId: sd.activeEditor?.options?.documentId || "primary"
-                    });
-                  } catch (err) {
-                    console.warn("[DocxDiffEditor] Failed to process track changes for bubbles:", err);
-                  }
-                }, 50);
+              try {
+                setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
+                enableReviewMode(superdocRef.current);
+                const sd = superdocRef.current;
+                if (sd.commentsStore?.processLoadedDocxComments) {
+                  setTimeout(() => {
+                    try {
+                      sd.commentsStore.processLoadedDocxComments({
+                        superdoc: sd,
+                        editor: sd.activeEditor,
+                        comments: [],
+                        // Empty array - we just want to trigger createCommentForTrackChanges
+                        documentId: sd.activeEditor?.options?.documentId || "primary"
+                      });
+                    } catch (err) {
+                      console.warn("[DocxDiffEditor] Failed to process track changes for bubbles:", err);
+                    }
+                  }, 50);
+                }
+              } catch (contentErr) {
+                console.warn(
+                  "[DocxDiffEditor] Failed to apply merged content with track changes. Falling back to direct content update without track bubbles.",
+                  contentErr
+                );
+                usedFallback = true;
+                try {
+                  setEditorContent(superdocRef.current.activeEditor, normalizedNewJson);
+                  setEditingMode(superdocRef.current);
+                } catch (fallbackErr) {
+                  console.error("[DocxDiffEditor] Fallback content update also failed:", fallbackErr);
+                  throw contentErr;
+                }
               }
             }
-            setStructuralChanges(structInfos);
-            setIsPaneDismissed(false);
+            if (!usedFallback) {
+              setStructuralChanges(structInfos);
+              setIsPaneDismissed(false);
+            } else {
+              setStructuralChanges([]);
+            }
             const insertions = diff.segments.filter((s) => s.type === "insert").length;
             const deletions = diff.segments.filter((s) => s.type === "delete").length;
             const formatChanges = diff.formatChanges?.length || 0;
-            const structuralChangeCount = structInfos.length;
+            const structuralChangeCount = usedFallback ? 0 : structInfos.length;
             const combinedSummary = [...structuralResult.summary];
             if (diff.summary.length > 0 && structuralResult.summary.length === 0) {
               combinedSummary.push(...diff.summary);
+            }
+            if (usedFallback) {
+              combinedSummary.push("Note: Track change visualization unavailable for this content");
             }
             const result = {
               totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
@@ -3342,8 +3365,9 @@ var DocxDiffEditor = forwardRef(
               formatChanges,
               structuralChanges: structuralChangeCount,
               summary: combinedSummary,
-              mergedJson: merged,
-              structuralChangeInfos: structInfos
+              mergedJson: usedFallback ? normalizedNewJson : merged,
+              structuralChangeInfos: usedFallback ? [] : structInfos,
+              usedFallback
             };
             onComparisonComplete?.(result);
             return result;

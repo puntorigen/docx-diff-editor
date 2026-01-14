@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.58] - 2026-01-14
+
+### Fixed
+
+- **`compareWith()` no longer crashes on documents with ordered lists**: SuperDoc's internal list numbering plugin (`createOrderedListPlugin`) crashes when content contains ordered lists with `numId` references to numbering definitions that don't exist in the target editor. This commonly happens when HTML with lists is parsed and injected.
+
+### Added
+
+- **Graceful fallback mode for problematic content**: When the merged content with track marks cannot be applied (due to SuperDoc plugin crashes), `compareWith()` now automatically falls back to applying the new content directly without track change visualization.
+
+- **New `usedFallback` field in `ComparisonResult`**: Indicates when fallback mode was used. When `true`, the content was updated successfully but track change bubbles are not available.
+
+### Changed
+
+- **Updated SuperDoc dependency**: Upgraded from `^1.3.0` to `^1.6.1` for latest fixes and improvements.
+
+### Technical Details
+
+- **Root cause**: When HTML with ordered lists (e.g., `1. **item**`) is parsed by a temporary SuperDoc instance:
+  1. The resulting JSON contains paragraphs with `numberingProperties.numId` referencing numbering definitions
+  2. These definitions are stored in `editor.converter.numbering`, not in the JSON
+  3. When injected into the main editor, the `numId` doesn't exist in that editor's definitions
+  4. SuperDoc's list sync plugin calls `getListDefinitionDetails()` which returns `{ lvlText: null }`
+  5. `createNumbering()` crashes calling `.replace()` on null
+
+- **Solution**: Wrapped `setEditorContent()` in try-catch:
+  - On success: Normal flow with track changes
+  - On failure: Apply clean new content without track marks, set `usedFallback: true`
+  - Summary includes "Note: Track change visualization unavailable for this content"
+
+- **Note**: This is a workaround for a bug in SuperDoc that should null-check `lvlText` before calling `.replace()`.
+
 ## [1.0.57] - 2026-01-14
 
 ### Fixed
