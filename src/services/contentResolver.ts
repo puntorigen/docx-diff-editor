@@ -276,6 +276,102 @@ export async function parseHtmlToJson(
 }
 
 /**
+ * Parse HTML using a linked child editor from the main SuperDoc instance.
+ * 
+ * This approach solves the list numbering problem: when parsing HTML with lists
+ * in an isolated SuperDoc instance, the numbering definitions are stored in that
+ * instance's editor.converter.numbering. When the parsed JSON is spliced into
+ * the main document, the main editor doesn't have those definitions, causing crashes.
+ * 
+ * By using createChildEditor from the main editor, numbering definitions are
+ * automatically synced to the parent via onListDefinitionsChange: linkListDefinitionsChange.
+ * 
+ * @param html - HTML string to parse
+ * @param mainEditor - The main SuperDoc editor instance (must have createChildEditor)
+ * @returns ProseMirror JSON with numbering definitions synced to main document
+ */
+export async function parseHtmlWithLinkedEditor(
+  html: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  mainEditor: any
+): Promise<ProseMirrorJSON> {
+  // Create a hidden container for the child editor
+  const container = document.createElement('div');
+  container.style.cssText =
+    'position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;';
+  document.body.appendChild(container);
+
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let childEditor: any = null;
+
+    const cleanup = () => {
+      setTimeout(() => {
+        if (childEditor) {
+          try {
+            childEditor.destroy?.();
+          } catch {
+            // Ignore cleanup errors
+          }
+          childEditor = null;
+        }
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, TIMEOUTS.CLEANUP_DELAY);
+    };
+
+    try {
+      // Use the main editor's createChildEditor method
+      // This automatically syncs numbering definitions via linkListDefinitionsChange
+      mainEditor.createChildEditor({
+        element: container,
+        html: html,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onCreate: ({ editor: localEditor }: { editor: any }) => {
+          if (resolved) return;
+          
+          try {
+            childEditor = localEditor;
+            const json = localEditor.getJSON();
+            
+            // Normalize runProperties to ensure styles render correctly
+            const normalizedJson = normalizeRunProperties(json);
+            
+            resolved = true;
+            cleanup();
+            resolve(normalizedJson);
+          } catch (err) {
+            resolved = true;
+            cleanup();
+            reject(err);
+          }
+        },
+        onError: (error: Error) => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          reject(error);
+        },
+      });
+
+      // Timeout fallback
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(new Error('Linked HTML parsing timed out'));
+        }
+      }, TIMEOUTS.PARSE_TIMEOUT);
+    } catch (err) {
+      cleanup();
+      reject(err);
+    }
+  });
+}
+
+/**
  * Parse a DOCX File into ProseMirror JSON using a hidden SuperDoc instance.
  */
 export async function parseDocxFile(

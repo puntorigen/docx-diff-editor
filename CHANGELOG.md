@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.59] - 2026-01-14
+
+### Fixed
+
+- **`parseHtml()` now works correctly with lists**: When the main editor is ready, `parseHtml()` now uses a **linked child editor** approach via `createChildEditor()`. This ensures list numbering definitions (for `<ol>` and `<ul>` elements) are synced to the main document's numbering store, preventing crashes when parsed content is later used with `compareWith()`.
+
+### Technical Details
+
+- **Root cause**: The previous isolated SuperDoc instance stored numbering definitions in its own `editor.converter.numbering` store. When parsed JSON was spliced into the main document, the `numId` references pointed to definitions that didn't exist in the main editor, causing:
+  ```
+  TypeError: Cannot read properties of null (reading 'replace')
+      at createNumbering
+  ```
+
+- **Solution**: New `parseHtmlWithLinkedEditor()` function that:
+  1. Uses `mainEditor.createChildEditor({ element, html, onCreate, onError })`
+  2. Numbering definitions are automatically synced via `onListDefinitionsChange: linkListDefinitionsChange`
+  3. Extracts JSON and destroys child editor after parsing
+  4. Falls back to isolated approach if linked parsing fails
+
+- **Backwards compatible**: If the main editor isn't ready yet (e.g., calling `parseHtml()` before `onReady`), the method falls back to the isolated SuperDoc instance approach.
+
 ## [1.0.58] - 2026-01-14
 
 ### Fixed

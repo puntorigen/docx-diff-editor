@@ -32,7 +32,7 @@ import type {
 
 import { StructuralChangesPane } from './components/StructuralChangesPane';
 
-import { parseDocxFile, parseHtmlToJson, detectContentType, isProseMirrorJSON } from './services/contentResolver';
+import { parseDocxFile, parseHtmlToJson, parseHtmlWithLinkedEditor, detectContentType, isProseMirrorJSON } from './services/contentResolver';
 import { diffDocuments } from './services/documentDiffer';
 import { mergeDocuments } from './services/mergeDocuments';
 import { extractEnrichedChanges } from './services/changeContextExtractor';
@@ -1263,14 +1263,36 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         },
 
         /**
-         * Parse HTML string to ProseMirror JSON using a hidden SuperDoc instance.
-         * Useful for converting HTML content before using with other methods.
+         * Parse HTML string to ProseMirror JSON.
+         * 
+         * When the main editor is ready, this uses a linked child editor approach
+         * which ensures list numbering definitions are synced to the main document.
+         * This prevents crashes when parsed content with lists is spliced into
+         * the main document via compareWith().
+         * 
+         * Falls back to an isolated SuperDoc instance if the main editor isn't ready.
          */
         async parseHtml(html: string): Promise<ProseMirrorJSON> {
           if (!SuperDocRef.current) {
             throw new Error('Editor not initialized');
           }
 
+          // If main editor is ready, use linked child editor approach
+          // This ensures numbering definitions are synced to the main document
+          const mainEditor = superdocRef.current?.activeEditor;
+          if (mainEditor?.createChildEditor) {
+            try {
+              return await parseHtmlWithLinkedEditor(html, mainEditor);
+            } catch (err) {
+              // Log and fall back to isolated approach
+              console.warn(
+                '[DocxDiffEditor] Linked HTML parsing failed, falling back to isolated approach:',
+                err
+              );
+            }
+          }
+
+          // Fallback: isolated instance (for standalone usage before editor is ready)
           return parseHtmlToJson(html, SuperDocRef.current);
         },
       }),

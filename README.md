@@ -269,6 +269,11 @@ Convert HTML strings to ProseMirror JSON without visible rendering. **Inline sty
 const json = await editorRef.current?.parseHtml('<h1>Title</h1><p>Content here</p>');
 console.log(json); // { type: 'doc', content: [...] }
 
+// Lists work correctly - numbering definitions are synced to the main document
+const listJson = await editorRef.current?.parseHtml(
+  '<ul><li>Item 1</li><li>Item 2</li></ul>'
+);
+
 // Inline styles are converted to marks
 const styledJson = await editorRef.current?.parseHtml(
   '<p><span style="color: red; font-weight: bold;">styled text</span></p>'
@@ -282,6 +287,14 @@ await editorRef.current?.updateContent(json);
 import { parseHtmlToJson } from 'docx-diff-editor';
 const json = await parseHtmlToJson(htmlString, SuperDocClass);
 ```
+
+### Linked Parsing for Lists
+
+When the main editor is ready, `parseHtml()` automatically uses a **linked child editor** approach. This ensures that list numbering definitions (for `<ol>` and `<ul>` elements) are synced to the main document's numbering store.
+
+This prevents crashes when parsed content with lists is later spliced into the main document and rendered via `compareWith()`.
+
+If the main editor isn't ready yet, the method falls back to an isolated SuperDoc instance.
 
 ### Supported Inline Styles
 

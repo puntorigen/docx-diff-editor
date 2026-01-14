@@ -962,6 +962,67 @@ async function parseHtmlToJson(html, SuperDoc) {
     }, 50);
   });
 }
+async function parseHtmlWithLinkedEditor(html, mainEditor) {
+  const container = document.createElement("div");
+  container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
+  document.body.appendChild(container);
+  return new Promise((resolve, reject) => {
+    let resolved = false;
+    let childEditor = null;
+    const cleanup = () => {
+      setTimeout(() => {
+        if (childEditor) {
+          try {
+            childEditor.destroy?.();
+          } catch {
+          }
+          childEditor = null;
+        }
+        if (container.parentNode) {
+          container.parentNode.removeChild(container);
+        }
+      }, TIMEOUTS.CLEANUP_DELAY);
+    };
+    try {
+      mainEditor.createChildEditor({
+        element: container,
+        html,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        onCreate: ({ editor: localEditor }) => {
+          if (resolved) return;
+          try {
+            childEditor = localEditor;
+            const json = localEditor.getJSON();
+            const normalizedJson = normalizeRunProperties(json);
+            resolved = true;
+            cleanup();
+            resolve(normalizedJson);
+          } catch (err) {
+            resolved = true;
+            cleanup();
+            reject(err);
+          }
+        },
+        onError: (error) => {
+          if (resolved) return;
+          resolved = true;
+          cleanup();
+          reject(error);
+        }
+      });
+      setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          cleanup();
+          reject(new Error("Linked HTML parsing timed out"));
+        }
+      }, TIMEOUTS.PARSE_TIMEOUT);
+    } catch (err) {
+      cleanup();
+      reject(err);
+    }
+  });
+}
 async function parseDocxFile(file, SuperDoc) {
   const container = document.createElement("div");
   container.style.cssText = "position:absolute;top:-9999px;left:-9999px;width:800px;height:600px;visibility:hidden;";
@@ -3664,12 +3725,29 @@ var DocxDiffEditor = forwardRef(
           }
         },
         /**
-         * Parse HTML string to ProseMirror JSON using a hidden SuperDoc instance.
-         * Useful for converting HTML content before using with other methods.
+         * Parse HTML string to ProseMirror JSON.
+         * 
+         * When the main editor is ready, this uses a linked child editor approach
+         * which ensures list numbering definitions are synced to the main document.
+         * This prevents crashes when parsed content with lists is spliced into
+         * the main document via compareWith().
+         * 
+         * Falls back to an isolated SuperDoc instance if the main editor isn't ready.
          */
         async parseHtml(html) {
           if (!SuperDocRef.current) {
             throw new Error("Editor not initialized");
+          }
+          const mainEditor = superdocRef.current?.activeEditor;
+          if (mainEditor?.createChildEditor) {
+            try {
+              return await parseHtmlWithLinkedEditor(html, mainEditor);
+            } catch (err) {
+              console.warn(
+                "[DocxDiffEditor] Linked HTML parsing failed, falling back to isolated approach:",
+                err
+              );
+            }
           }
           return parseHtmlToJson(html, SuperDocRef.current);
         }
