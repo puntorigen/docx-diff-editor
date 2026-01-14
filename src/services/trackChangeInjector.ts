@@ -9,6 +9,28 @@ import { DEFAULT_AUTHOR } from '../constants';
 import { ensureValidCssColor } from './colorUtils';
 
 /**
+ * Check if a value is meaningful (not null, undefined, or empty string).
+ */
+function isMeaningfulValue(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== '';
+}
+
+/**
+ * Clean attrs by removing null, undefined, and empty string values.
+ * This prevents SuperDoc's translateFormatChangesToEnglish from showing
+ * "Changed X from Y to undefined" when properties don't exist in one side.
+ */
+function cleanAttrs(attrs: Record<string, unknown>): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (isMeaningfulValue(value)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
+
+/**
  * Normalize a mark to ensure it has an `attrs` property and valid color format.
  * 
  * SuperDoc requirements:
@@ -30,11 +52,50 @@ function normalizeMark(mark: ProseMirrorMark): ProseMirrorMark {
 }
 
 /**
+ * Normalize a mark for use in trackFormat before/after arrays.
+ * 
+ * This is stricter than normalizeMark - it also cleans attrs to remove
+ * null/undefined/empty values. This prevents SuperDoc's bubble display from
+ * showing "Set font family to undefined" when comparing marks with different
+ * property sets.
+ * 
+ * Example issue without cleaning:
+ * - before: {fontFamily: "Arial", fontSize: "12pt"}
+ * - after: {color: "#ff0000"}  (no fontFamily property)
+ * - Object.keys merge: ["fontFamily", "fontSize", "color"]
+ * - afterValue for fontFamily = undefined → shows "Changed font family from Arial to undefined"
+ */
+function normalizeMarkForTrackFormat(mark: ProseMirrorMark): ProseMirrorMark {
+  let attrs = { ...(mark.attrs || {}) };
+  
+  // Ensure color has valid CSS format (# prefix for hex colors)
+  if (attrs.color !== undefined) {
+    attrs.color = ensureValidCssColor(attrs.color);
+  }
+  
+  // Clean attrs to only include meaningful values
+  attrs = cleanAttrs(attrs);
+  
+  return {
+    type: mark.type,
+    attrs,
+  };
+}
+
+/**
  * Normalize an array of marks to ensure all have `attrs` property
  * and valid color formats.
  */
 function normalizeMarks(marks: ProseMirrorMark[]): ProseMirrorMark[] {
   return marks.map(normalizeMark);
+}
+
+/**
+ * Normalize an array of marks for use in trackFormat before/after arrays.
+ * Cleans attrs to remove null/undefined/empty values.
+ */
+function normalizeMarksForTrackFormat(marks: ProseMirrorMark[]): ProseMirrorMark[] {
+  return marks.map(normalizeMarkForTrackFormat);
 }
 
 /**
@@ -92,18 +153,23 @@ export function createTrackDeleteMark(
  * 
  * Note: SuperDoc's parseFormatList requires all marks in before/after arrays
  * to have both `type` and `attrs` properties. Marks without `attrs` get filtered out,
- * causing empty values in track change bubbles. We normalize marks here to ensure
- * all have at least an empty `attrs` object.
+ * causing empty values in track change bubbles.
+ * 
+ * We use normalizeMarksForTrackFormat which:
+ * 1. Ensures all marks have `attrs` property (required by parseFormatList)
+ * 2. Cleans attrs to remove null/undefined/empty values (prevents "Set X to undefined" bubbles)
+ * 3. Normalizes color values to valid CSS format
  */
 export function createTrackFormatMark(
   before: ProseMirrorMark[],
   after: ProseMirrorMark[],
   author: TrackChangeAuthor = DEFAULT_AUTHOR
 ): ProseMirrorMark {
-  // Normalize marks to ensure all have `attrs` property
-  // This is required by SuperDoc's parseFormatList which filters marks without attrs
-  const normalizedBefore = normalizeMarks(before);
-  const normalizedAfter = normalizeMarks(after);
+  // Normalize marks for trackFormat - cleans attrs to only include meaningful values
+  // This prevents SuperDoc's translateFormatChangesToEnglish from showing
+  // "Changed X from Y to undefined" when comparing marks with different property sets
+  const normalizedBefore = normalizeMarksForTrackFormat(before);
+  const normalizedAfter = normalizeMarksForTrackFormat(after);
 
   return {
     type: 'trackFormat',

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.52] - 2026-01-14
+
+### Fixed
+
+- **Track change bubbles no longer show "undefined" values**: When comparing documents with different textStyle properties (e.g., docA has fontFamily but docB doesn't), the bubble would show "Changed font family from Arial to undefined". Now, attrs are cleaned to only include meaningful values before comparison.
+
+### Technical Details
+
+- **Root cause**: SuperDoc's `translateFormatChangesToEnglish` iterates over `Object.keys({...beforeTextStyle, ...afterTextStyle})`. If docA had `{fontFamily: "Arial"}` and docB had `{color: "#ff0000"}`, the merged keys included `fontFamily`, but `afterTextStyle.fontFamily` was `undefined` (not `null`), bypassing SuperDoc's null check.
+
+- **Solution**: New `normalizeMarkForTrackFormat()` and `normalizeMarksForTrackFormat()` functions that clean attrs:
+  - Remove `null`, `undefined`, and empty string values from attrs
+  - Only meaningful values remain for comparison
+  - Prevents "Set X to undefined" or "Changed X from Y to undefined" messages
+
+- **Functions added**:
+  - `isMeaningfulValue()` - checks if value is not null/undefined/empty
+  - `cleanAttrs()` - filters attrs to only include meaningful values
+  - `normalizeMarkForTrackFormat()` - combines cleaning with color normalization
+  - `normalizeMarksForTrackFormat()` - array version
+
 ## [1.0.51] - 2026-01-13
 
 ### Fixed

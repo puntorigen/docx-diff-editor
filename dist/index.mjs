@@ -533,6 +533,18 @@ function ensureValidCssColor(color) {
 }
 
 // src/services/trackChangeInjector.ts
+function isMeaningfulValue(value) {
+  return value !== null && value !== void 0 && value !== "";
+}
+function cleanAttrs(attrs) {
+  const cleaned = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (isMeaningfulValue(value)) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned;
+}
 function normalizeMark(mark) {
   const attrs = { ...mark.attrs || {} };
   if (attrs.color !== void 0) {
@@ -543,8 +555,22 @@ function normalizeMark(mark) {
     attrs
   };
 }
+function normalizeMarkForTrackFormat(mark) {
+  let attrs = { ...mark.attrs || {} };
+  if (attrs.color !== void 0) {
+    attrs.color = ensureValidCssColor(attrs.color);
+  }
+  attrs = cleanAttrs(attrs);
+  return {
+    type: mark.type,
+    attrs
+  };
+}
 function normalizeMarks(marks) {
   return marks.map(normalizeMark);
+}
+function normalizeMarksForTrackFormat(marks) {
+  return marks.map(normalizeMarkForTrackFormat);
 }
 function normalizeMarksForRendering(marks) {
   return normalizeMarks(marks);
@@ -574,8 +600,8 @@ function createTrackDeleteMark(author = DEFAULT_AUTHOR, id) {
   };
 }
 function createTrackFormatMark(before, after, author = DEFAULT_AUTHOR) {
-  const normalizedBefore = normalizeMarks(before);
-  const normalizedAfter = normalizeMarks(after);
+  const normalizedBefore = normalizeMarksForTrackFormat(before);
+  const normalizedAfter = normalizeMarksForTrackFormat(after);
   return {
     type: "trackFormat",
     attrs: {

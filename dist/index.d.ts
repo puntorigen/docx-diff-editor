@@ -516,8 +516,12 @@ declare function createTrackDeleteMark(author?: TrackChangeAuthor, id?: string):
  *
  * Note: SuperDoc's parseFormatList requires all marks in before/after arrays
  * to have both `type` and `attrs` properties. Marks without `attrs` get filtered out,
- * causing empty values in track change bubbles. We normalize marks here to ensure
- * all have at least an empty `attrs` object.
+ * causing empty values in track change bubbles.
+ *
+ * We use normalizeMarksForTrackFormat which:
+ * 1. Ensures all marks have `attrs` property (required by parseFormatList)
+ * 2. Cleans attrs to remove null/undefined/empty values (prevents "Set X to undefined" bubbles)
+ * 3. Normalizes color values to valid CSS format
  */
 declare function createTrackFormatMark(before: ProseMirrorMark[], after: ProseMirrorMark[], author?: TrackChangeAuthor): ProseMirrorMark;
 
