@@ -106,7 +106,7 @@ await editor.setSource({ type: 'doc', content: [...] });
 | `onReady` | `() => void` | - | Called when editor is ready |
 | `onSourceLoaded` | `(json) => void` | - | Called when source is loaded |
 | `onComparisonComplete` | `(result) => void` | - | Called after comparison |
-| `onError` | `(error) => void` | - | Called on errors |
+| `onError` | `(error: EditorError) => void` | - | Called on errors (see Error Handling) |
 | `className` | `string` | - | Container class |
 | `toolbarClassName` | `string` | - | Toolbar container class |
 | `editorClassName` | `string` | - | Editor container class |
@@ -119,11 +119,13 @@ await editor.setSource({ type: 'doc', content: [...] });
 ```tsx
 interface DocxDiffEditorRef {
   // Set the source/base document
-  setSource(content: DocxContent): Promise<void>;
+  // Returns void on success, SetSourceError on failure (editor preserved)
+  setSource(content: DocxContent): Promise<void | SetSourceError>;
 
   // Compare current editor content with new content, show track changes
   // Note: Compares against current editor state (not original source)
-  compareWith(content: DocxContent): Promise<ComparisonResult>;
+  // Returns ComparisonResult on success, ComparisonError on failure (editor preserved)
+  compareWith(content: DocxContent): Promise<CompareWithResult>;
 
   // Get diff data
   getDiffSegments(): DiffSegment[];
@@ -165,16 +167,85 @@ interface DocxDiffEditorRef {
 
 ```tsx
 interface ComparisonResult {
+  success: true;                      // Indicates successful comparison
   totalChanges: number;
   insertions: number;
   deletions: number;
   formatChanges: number;
-  structuralChanges: number;          // New: count of structural changes
+  structuralChanges: number;
   summary: string[];
   mergedJson: ProseMirrorJSON;
-  structuralChangeInfos: StructuralChangeInfo[];  // New: metadata for pane
+  structuralChangeInfos: StructuralChangeInfo[];
+  usedFallback?: boolean;             // True if track visualization unavailable
 }
 ```
+
+### Error Handling
+
+The component provides graceful error handling that preserves the editor state on recoverable failures.
+
+#### Error Types
+
+```tsx
+interface EditorError {
+  error: Error;           // The underlying error
+  type: 'fatal' | 'operation';  // Fatal = editor unusable, Operation = editor still works
+  operation?: 'setSource' | 'compareWith' | 'parseHtml' | 'export' | 'init';
+  recoverable: boolean;   // True if editor is still functional
+  message: string;        // Human-readable message
+  phase?: 'parsing' | 'diffing' | 'merging' | 'applying';  // For compareWith
+}
+```
+
+#### Result-Based Error Handling
+
+Both `setSource()` and `compareWith()` return result objects instead of throwing:
+
+```tsx
+// compareWith returns a union type
+const result = await editorRef.current?.compareWith(newContent);
+
+if (!result.success) {
+  // Editor is still intact! Show a friendly message
+  showModal({
+    title: 'Comparison Failed',
+    message: result.message,
+    phase: result.phase,  // 'parsing', 'diffing', 'merging', or 'applying'
+  });
+  return;
+}
+
+// Success - access the usual fields
+console.log(`Found ${result.totalChanges} changes`);
+```
+
+#### Using the onError Callback
+
+```tsx
+<DocxDiffEditor
+  ref={editorRef}
+  onError={(errorInfo) => {
+    if (errorInfo.type === 'fatal') {
+      // Editor is unusable - show full error page or reinitialize
+      console.error('Fatal editor error:', errorInfo.error);
+    } else {
+      // Editor still works - just show a notification
+      toast.error(`${errorInfo.operation} failed: ${errorInfo.message}`);
+    }
+  }}
+/>
+```
+
+#### Recovery Behavior
+
+When operations fail, the component attempts a multi-tier recovery:
+
+1. **Primary**: Apply the requested change
+2. **Fallback**: Try a simpler version (e.g., without track marks)
+3. **Rollback**: Restore the previous editor state
+4. **Fatal**: Only if all recovery attempts fail, show the error overlay
+
+This ensures users don't lose their work due to invalid comparison content or parsing errors.
 
 ### DocumentInfo
 

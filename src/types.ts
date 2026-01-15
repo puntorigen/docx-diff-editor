@@ -227,13 +227,48 @@ export interface StructuralChangeInfo {
 }
 
 // ============================================================================
+// Error Types
+// ============================================================================
+
+/**
+ * Operation types that can fail
+ */
+export type EditorOperation = 'setSource' | 'compareWith' | 'parseHtml' | 'export' | 'init';
+
+/**
+ * Phase of compareWith where failure occurred
+ */
+export type ComparisonPhase = 'parsing' | 'diffing' | 'merging' | 'applying';
+
+/**
+ * Enhanced error information passed to onError callback.
+ * Provides context about whether the error is recoverable and what operation failed.
+ */
+export interface EditorError {
+  /** The underlying Error object */
+  error: Error;
+  /** Error classification: 'fatal' means editor is unusable, 'operation' means editor is still functional */
+  type: 'fatal' | 'operation';
+  /** Which operation failed */
+  operation?: EditorOperation;
+  /** Whether the editor is still usable after this error */
+  recoverable: boolean;
+  /** Human-readable error message */
+  message: string;
+  /** For compareWith: which phase failed */
+  phase?: ComparisonPhase;
+}
+
+// ============================================================================
 // Comparison Result Types
 // ============================================================================
 
 /**
- * Result returned after comparing two documents
+ * Successful result returned after comparing two documents
  */
 export interface ComparisonResult {
+  /** Indicates successful comparison */
+  success: true;
   /** Total number of changes */
   totalChanges: number;
   /** Number of insertions */
@@ -258,6 +293,27 @@ export interface ComparisonResult {
    */
   usedFallback?: boolean;
 }
+
+/**
+ * Failed comparison result.
+ * Returned when compareWith fails but the editor is still functional.
+ */
+export interface ComparisonError {
+  /** Indicates failed comparison */
+  success: false;
+  /** The underlying error */
+  error: Error;
+  /** Human-readable error message */
+  message: string;
+  /** Which phase of comparison failed */
+  phase: ComparisonPhase;
+}
+
+/**
+ * Union type for compareWith return value.
+ * Check the `success` field to determine which type you have.
+ */
+export type CompareWithResult = ComparisonResult | ComparisonError;
 
 // ============================================================================
 // Enriched Change Types (for LLM context)
@@ -414,8 +470,17 @@ export interface DocxDiffEditorProps {
   /** Callback when comparison completes */
   onComparisonComplete?: (result: ComparisonResult) => void;
 
-  /** Callback on errors */
-  onError?: (error: Error) => void;
+  /**
+   * Callback on errors.
+   * 
+   * The EditorError object provides context about the error:
+   * - `type: 'fatal'` - Editor is unusable (overlay will be shown)
+   * - `type: 'operation'` - Operation failed but editor is still functional
+   * 
+   * For operation errors, the editor remains visible and usable.
+   * You can use this callback to show a modal or toast notification.
+   */
+  onError?: (error: EditorError) => void;
 
   /** Container className */
   className?: string;
@@ -441,17 +506,42 @@ export interface DocxDiffEditorProps {
 }
 
 /**
+ * Error result for setSource operation
+ */
+export interface SetSourceError {
+  /** Indicates failure */
+  success: false;
+  /** The underlying error */
+  error: Error;
+  /** Human-readable error message */
+  message: string;
+}
+
+/**
  * Ref methods exposed by DocxDiffEditor
  */
 export interface DocxDiffEditorRef {
-  /** Set the source/base document (destroys and recreates SuperDoc instance) */
-  setSource(content: DocxContent): Promise<void>;
+  /**
+   * Set the source/base document (destroys and recreates SuperDoc instance).
+   * 
+   * On failure, returns an error object instead of throwing. The editor
+   * will attempt to restore the previous state if possible.
+   */
+  setSource(content: DocxContent): Promise<void | SetSourceError>;
 
   /** Update content in the existing editor without recreating SuperDoc instance */
   updateContent(json: ProseMirrorJSON): void;
 
-  /** Compare source with new content, show track changes */
-  compareWith(content: DocxContent): Promise<ComparisonResult>;
+  /**
+   * Compare source with new content, show track changes.
+   * 
+   * Returns a union type - check `result.success` to determine outcome:
+   * - `success: true` - Comparison succeeded, access result fields
+   * - `success: false` - Comparison failed, editor unchanged, check error
+   * 
+   * On failure, the editor is preserved in its previous state.
+   */
+  compareWith(content: DocxContent): Promise<CompareWithResult>;
 
   /** Get raw diff segments */
   getDiffSegments(): DiffSegment[];

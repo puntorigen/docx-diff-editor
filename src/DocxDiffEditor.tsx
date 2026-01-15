@@ -24,6 +24,10 @@ import type {
   DiffSegment,
   DiffResult,
   ComparisonResult,
+  CompareWithResult,
+  ComparisonError,
+  SetSourceError,
+  EditorError,
   EnrichedChange,
   DocumentInfo,
   DocumentProperties,
@@ -127,10 +131,14 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
     const mountedRef = useRef(true);
     const initRef = useRef(false);
     const readyRef = useRef(false);
+    
+    // Rollback state: stores last known good JSON for recovery
+    const rollbackJsonRef = useRef<ProseMirrorJSON | null>(null);
 
     // State
     const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
+    // Fatal error state - only set when editor is unrecoverable
+    const [fatalError, setFatalError] = useState<string | null>(null);
     const [sourceJson, setSourceJson] = useState<ProseMirrorJSON | null>(null);
     const [mergedJson, setMergedJson] = useState<ProseMirrorJSON | null>(null);
     const [diffResult, setDiffResult] = useState<DiffResult | null>(null);
@@ -234,13 +242,42 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
     }, []);
 
     /**
-     * Handle errors
+     * Handle fatal errors - sets error overlay and notifies callback
      */
-    const handleError = useCallback(
-      (err: Error | string) => {
+    const handleFatalError = useCallback(
+      (err: Error | string, operation?: EditorError['operation']) => {
         const error = err instanceof Error ? err : new Error(err);
-        setError(error.message);
-        onError?.(error);
+        setFatalError(error.message);
+        onError?.({
+          error,
+          type: 'fatal',
+          operation,
+          recoverable: false,
+          message: error.message,
+        });
+      },
+      [onError]
+    );
+
+    /**
+     * Handle operation errors - notifies callback but doesn't show overlay
+     * The editor remains functional after operation errors
+     */
+    const handleOperationError = useCallback(
+      (
+        err: Error | string,
+        operation: EditorError['operation'],
+        phase?: EditorError['phase']
+      ) => {
+        const error = err instanceof Error ? err : new Error(err);
+        onError?.({
+          error,
+          type: 'operation',
+          operation,
+          recoverable: true,
+          message: error.message,
+          phase,
+        });
       },
       [onError]
     );
@@ -488,7 +525,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
       }
 
       setIsLoading(true);
-      setError(null);
+      setFatalError(null);
       destroySuperdoc();
 
       try {
@@ -523,11 +560,15 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           if (sd?.activeEditor && isProseMirrorJSON(initialSource)) {
             setEditorContent(sd.activeEditor, initialSource as ProseMirrorJSON);
             setSourceJson(initialSource as ProseMirrorJSON);
+            // Set initial rollback state
+            rollbackJsonRef.current = initialSource as ProseMirrorJSON;
             onSourceLoaded?.(initialSource as ProseMirrorJSON);
           }
         } else {
           // Use JSON extracted from the loaded document
           setSourceJson(json);
+          // Set initial rollback state
+          rollbackJsonRef.current = json;
           onSourceLoaded?.(json);
         }
 
@@ -535,7 +576,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         onReady?.();
       } catch (err) {
         console.error('Failed to initialize SuperDoc:', err);
-        handleError(err instanceof Error ? err : new Error('Failed to load editor'));
+        handleFatalError(err instanceof Error ? err : new Error('Failed to load editor'), 'init');
         setIsLoading(false);
         // Allow retry on error
         initRef.current = false;
@@ -551,7 +592,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
       destroySuperdoc,
       createSuperdoc,
       setEditorContent,
-      handleError,
+      handleFatalError,
     ]);
 
     // Initialize on mount - only once
@@ -599,51 +640,135 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
          * Accepts File (DOCX), HTML string, or ProseMirror JSON.
          * Note: This destroys and recreates the SuperDoc instance.
          * For JSON content updates, prefer updateContent() to preserve the existing template.
+         * 
+         * On failure, attempts to preserve the previous editor state.
+         * Returns void on success, or SetSourceError on recoverable failure.
          */
-        async setSource(content: DocxContent): Promise<void> {
+        async setSource(content: DocxContent): Promise<void | SetSourceError> {
           if (!SuperDocRef.current) {
-            throw new Error('Editor not initialized');
+            const error = new Error('Editor not initialized');
+            handleOperationError(error, 'setSource');
+            return { success: false, error, message: error.message };
           }
 
+          // Capture current state for rollback
+          const currentRollback = superdocRef.current?.activeEditor
+            ? superdocRef.current.activeEditor.getJSON()
+            : rollbackJsonRef.current;
+
           setIsLoading(true);
-          setError(null);
+          setFatalError(null);
 
           try {
             const contentType = detectContentType(content);
-            let json: ProseMirrorJSON;
+            let validatedJson: ProseMirrorJSON | null = null;
 
-            // Destroy current instance and create new one
+            // ===============================================================
+            // PHASE 1: Pre-validate content in hidden instance
+            // This ensures we don't destroy the current editor until we know
+            // the new content is valid.
+            // ===============================================================
+            try {
+              if (contentType === 'file') {
+                // Parse DOCX file using hidden SuperDoc instance
+                validatedJson = await parseDocxFile(content as File, SuperDocRef.current);
+              } else if (contentType === 'html') {
+                // Parse HTML using hidden SuperDoc instance
+                validatedJson = await parseHtmlToJson(content as string, SuperDocRef.current);
+              } else {
+                // JSON content - validate structure
+                if (!isProseMirrorJSON(content)) {
+                  throw new Error('Invalid ProseMirror JSON structure');
+                }
+                validatedJson = content as ProseMirrorJSON;
+              }
+            } catch (parseErr) {
+              // Parsing failed - don't touch the current editor
+              const error = parseErr instanceof Error ? parseErr : new Error('Failed to parse content');
+              handleOperationError(error, 'setSource');
+              setIsLoading(false);
+              return { success: false, error, message: error.message };
+            }
+
+            // ===============================================================
+            // PHASE 2: Destroy current instance and create new one
+            // We've validated the content, now proceed with the swap
+            // ===============================================================
             destroySuperdoc();
 
-            if (contentType === 'file') {
-              // Initialize with DOCX file
-              const result = await createSuperdoc({ document: content as File });
-              json = result.json;
-            } else if (contentType === 'html') {
-              // Use SuperDoc's native HTML support
-              const result = await createSuperdoc({ html: content as string });
-              json = result.json;
-            } else {
-              // JSON content - initialize with template or blank, then set content
-              const result = await createSuperdoc(templateDocx ? { document: templateDocx } : {});
-              if (result.superdoc?.activeEditor && isProseMirrorJSON(content)) {
-                setEditorContent(result.superdoc.activeEditor, content as ProseMirrorJSON);
-                json = content as ProseMirrorJSON;
-              } else {
+            let json: ProseMirrorJSON;
+            try {
+              if (contentType === 'file') {
+                // Initialize with DOCX file
+                const result = await createSuperdoc({ document: content as File });
                 json = result.json;
+              } else if (contentType === 'html') {
+                // Use SuperDoc's native HTML support
+                const result = await createSuperdoc({ html: content as string });
+                json = result.json;
+              } else {
+                // JSON content - initialize with template or blank, then set content
+                const result = await createSuperdoc(templateDocx ? { document: templateDocx } : {});
+                if (result.superdoc?.activeEditor && validatedJson) {
+                  setEditorContent(result.superdoc.activeEditor, validatedJson);
+                  json = validatedJson;
+                } else {
+                  json = result.json;
+                }
+              }
+            } catch (createErr) {
+              // Creation failed - try to recover with rollback content
+              console.warn('[DocxDiffEditor] Failed to create new editor, attempting recovery:', createErr);
+              
+              if (currentRollback) {
+                try {
+                  // Try to create a new instance with the rollback content
+                  const recoveryResult = await createSuperdoc(templateDocx ? { document: templateDocx } : {});
+                  if (recoveryResult.superdoc?.activeEditor) {
+                    setEditorContent(recoveryResult.superdoc.activeEditor, currentRollback);
+                    setSourceJson(currentRollback);
+                    setEditingMode(superdocRef.current!);
+                  }
+                  
+                  const error = createErr instanceof Error ? createErr : new Error('Failed to set source');
+                  handleOperationError(error, 'setSource');
+                  setIsLoading(false);
+                  return { success: false, error, message: error.message };
+                } catch (recoveryErr) {
+                  // Recovery also failed - this is fatal
+                  console.error('[DocxDiffEditor] Recovery failed:', recoveryErr);
+                  const error = createErr instanceof Error ? createErr : new Error('Failed to set source');
+                  handleFatalError(error, 'setSource');
+                  setIsLoading(false);
+                  return { success: false, error, message: error.message };
+                }
+              } else {
+                // No rollback available - this is fatal
+                const error = createErr instanceof Error ? createErr : new Error('Failed to set source');
+                handleFatalError(error, 'setSource');
+                setIsLoading(false);
+                return { success: false, error, message: error.message };
               }
             }
 
+            // ===============================================================
+            // PHASE 3: Success - update state
+            // ===============================================================
             setSourceJson(json);
             setMergedJson(null);
             setDiffResult(null);
             setEditingMode(superdocRef.current!);
+            // Update rollback state
+            rollbackJsonRef.current = json;
             onSourceLoaded?.(json);
-          } catch (err) {
-            handleError(err instanceof Error ? err : new Error('Failed to set source'));
-            throw err;
-          } finally {
             setIsLoading(false);
+            return; // Success - void return
+          } catch (err) {
+            // Unexpected error
+            const error = err instanceof Error ? err : new Error('Failed to set source');
+            handleFatalError(error, 'setSource');
+            setIsLoading(false);
+            return { success: false, error, message: error.message };
           }
         },
 
@@ -656,28 +781,40 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
          * 
          * To compare against the original source document, call setSource() again
          * before compareWith().
+         * 
+         * Returns a union type - check `result.success` to determine outcome:
+         * - `success: true` - Comparison succeeded
+         * - `success: false` - Comparison failed, editor unchanged
          */
-        async compareWith(content: DocxContent): Promise<ComparisonResult> {
+        async compareWith(content: DocxContent): Promise<CompareWithResult> {
+          // ===============================================================
+          // PHASE 0: Pre-flight checks
+          // ===============================================================
           if (!SuperDocRef.current) {
-            throw new Error('Editor not initialized');
+            const error = new Error('Editor not initialized');
+            handleOperationError(error, 'compareWith', 'parsing');
+            return { success: false, error, message: error.message, phase: 'parsing' };
           }
           if (!superdocRef.current?.activeEditor) {
-            throw new Error('Editor not ready. Ensure a document is loaded first.');
+            const error = new Error('Editor not ready. Ensure a document is loaded first.');
+            handleOperationError(error, 'compareWith', 'parsing');
+            return { success: false, error, message: error.message, phase: 'parsing' };
           }
 
-          setIsLoading(true);
-          try {
-            // Get current editor content and strip any existing track marks
-            // to create a clean baseline for comparison
-            const currentEditorJson = superdocRef.current.activeEditor.getJSON();
-            const cleanBaseline = acceptAllChangesInJson(currentEditorJson) || { type: 'doc', content: [] };
-            
-            // Update sourceJson to reflect this new baseline
-            // (so getSourceContent() returns what was used for comparison)
-            setSourceJson(cleanBaseline);
-            const contentType = detectContentType(content);
-            let newJson: ProseMirrorJSON;
+          // ===============================================================
+          // PHASE 1: Capture rollback state BEFORE any changes
+          // ===============================================================
+          const rollbackJson = superdocRef.current.activeEditor.getJSON();
 
+          setIsLoading(true);
+          
+          // ===============================================================
+          // PHASE 2: Parse and validate new content (editor unchanged)
+          // ===============================================================
+          let newJson: ProseMirrorJSON;
+          const contentType = detectContentType(content);
+          
+          try {
             if (contentType === 'file') {
               // Parse DOCX file using hidden SuperDoc instance
               newJson = await parseDocxFile(content as File, SuperDocRef.current);
@@ -725,32 +862,40 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
                 throw err;
               }
             } else {
-              // JSON content - use directly
+              // JSON content - validate and use directly
               if (!isProseMirrorJSON(content)) {
                 throw new Error('Invalid ProseMirror JSON structure');
               }
               newJson = content as ProseMirrorJSON;
             }
+          } catch (parseErr) {
+            // Parsing failed - editor is unchanged
+            const error = parseErr instanceof Error ? parseErr : new Error('Failed to parse content');
+            handleOperationError(error, 'compareWith', 'parsing');
+            setIsLoading(false);
+            return { success: false, error, message: error.message, phase: 'parsing' };
+          }
+
+          // ===============================================================
+          // PHASE 3: Diff and merge (editor unchanged)
+          // ===============================================================
+          let normalizedMerged: ProseMirrorJSON;
+          let normalizedNewJson: ProseMirrorJSON;
+          let structInfos: StructuralChangeInfo[];
+          let diff: DiffResult;
+          let cleanBaseline: ProseMirrorJSON;
+          
+          try {
+            // Get current editor content and strip any existing track marks
+            // to create a clean baseline for comparison
+            const currentEditorJson = superdocRef.current.activeEditor.getJSON();
+            cleanBaseline = acceptAllChangesInJson(currentEditorJson) || { type: 'doc', content: [] };
 
             // Clean any existing track marks from the new content.
-            // This ensures we always compare clean documents, even if the caller
-            // passes content that was derived from getContent() (which includes track marks).
-            // Without this, subsequent compareWith() calls would layer track marks.
             const cleanNewJson = acceptAllChangesInJson(newJson) || { type: 'doc', content: [] };
-
-            // =========================================================
-            // STRUCTURAL MERGE (Phase 6b)
-            // Instead of character-level-only merge, we now use the
-            // structure-aware merger which:
-            // 1. Aligns blocks first (tables, lists, paragraphs)
-            // 2. Inserts/deletes entire blocks with track marks
-            // 3. Applies character-level diff within matched blocks
-            // =========================================================
             
-            // Normalize runProperties on the new document to ensure
-            // styles from marks are synced to runProperties for rendering.
-            // This is a safety net for content that didn't come through parseHtml.
-            const normalizedNewJson = normalizeRunProperties(cleanNewJson);
+            // Normalize runProperties on the new document
+            normalizedNewJson = normalizeRunProperties(cleanNewJson);
             
             // Use structural merger for the main merge
             const structuralResult = mergeWithStructuralAwareness(
@@ -760,134 +905,142 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
             );
             
             const merged = structuralResult.mergedDoc;
-            const structInfos = structuralResult.structuralInfos;
+            structInfos = structuralResult.structuralInfos;
             
-            // Normalize runProperties on the MERGED document.
-            // The merge process creates text nodes with marks but may not
-            // sync runProperties on parent runs. This ensures bold, italic,
-            // color, etc. are properly reflected in runProperties for rendering.
-            const normalizedMerged = normalizeRunProperties(merged);
-            
-            setMergedJson(normalizedMerged);
+            // Normalize runProperties on the MERGED document
+            normalizedMerged = normalizeRunProperties(merged);
             
             // Also keep the text-level diff for getDiffSegments() backward compat
-            const diff = diffDocuments(cleanBaseline, cleanNewJson);
-            setDiffResult(diff);
+            diff = diffDocuments(cleanBaseline, cleanNewJson);
+          } catch (mergeErr) {
+            // Merge failed - editor is unchanged
+            const error = mergeErr instanceof Error ? mergeErr : new Error('Failed to merge documents');
+            handleOperationError(error, 'compareWith', 'merging');
+            setIsLoading(false);
+            return { success: false, error, message: error.message, phase: 'merging' };
+          }
 
-            // Track whether we used fallback mode
-            let usedFallback = false;
-
-            // Update editor with merged content and enable review mode
-            if (superdocRef.current?.activeEditor) {
-              try {
-                // Try the normal flow: apply merged content with track marks
-                setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
-                enableReviewMode(superdocRef.current);
-                
-                // CRITICAL FIX: Trigger comment creation for track marks
-                // SuperDoc's track bubbles require comment entries in commentsStore.
-                // When we inject JSON with track marks via setEditorContent, no comments
-                // are created automatically. We need to call processLoadedDocxComments
-                // which internally calls createCommentForTrackChanges to:
-                // 1. Scan the document for track marks using getTrackChanges
-                // 2. Create comment entries for each track mark
-                // 3. This populates getFloatingComments which renders the bubbles
-                //
-                // Source reference: superdoc/dist/chunks/index-1n6qegaQ.es.js
-                // - Line 4212: processLoadedDocxComments function
-                // - Line 4247: setTimeout(() => createCommentForTrackChanges(editor))
-                // - Line 4250: createCommentForTrackChanges scans for track marks
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                const sd = superdocRef.current as any;
-                if (sd.commentsStore?.processLoadedDocxComments) {
-                  // Small delay to ensure editor state is fully updated
-                  setTimeout(() => {
-                    try {
-                      sd.commentsStore.processLoadedDocxComments({
-                        superdoc: sd,
-                        editor: sd.activeEditor,
-                        comments: [], // Empty array - we just want to trigger createCommentForTrackChanges
-                        documentId: sd.activeEditor?.options?.documentId || 'primary',
-                      });
-                    } catch (err) {
-                      console.warn('[DocxDiffEditor] Failed to process track changes for bubbles:', err);
-                    }
-                  }, 50);
-                }
-              } catch (contentErr) {
-                // FALLBACK: SuperDoc plugin crashed (e.g., list numbering with missing definitions)
-                // Apply the clean new content directly without track marks.
-                // This ensures the user's content update succeeds, even without track visualization.
-                console.warn(
-                  '[DocxDiffEditor] Failed to apply merged content with track changes. ' +
-                  'Falling back to direct content update without track bubbles.',
-                  contentErr
-                );
-                
-                usedFallback = true;
-                
+          // ===============================================================
+          // PHASE 4: Apply merged content (with recovery cascade)
+          // ===============================================================
+          let usedFallback = false;
+          
+          try {
+            // Try the normal flow: apply merged content with track marks
+            setEditorContent(superdocRef.current.activeEditor, normalizedMerged);
+            enableReviewMode(superdocRef.current);
+            
+            // Trigger comment creation for track marks
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const sd = superdocRef.current as any;
+            if (sd.commentsStore?.processLoadedDocxComments) {
+              setTimeout(() => {
                 try {
-                  // Apply the clean new content (without track marks)
-                  setEditorContent(superdocRef.current.activeEditor, normalizedNewJson);
-                  // Use normal editing mode since we don't have track changes
-                  setEditingMode(superdocRef.current);
-                } catch (fallbackErr) {
-                  // If even the fallback fails, something is seriously wrong
-                  console.error('[DocxDiffEditor] Fallback content update also failed:', fallbackErr);
-                  throw contentErr; // Re-throw the original error
+                  sd.commentsStore.processLoadedDocxComments({
+                    superdoc: sd,
+                    editor: sd.activeEditor,
+                    comments: [],
+                    documentId: sd.activeEditor?.options?.documentId || 'primary',
+                  });
+                } catch (err) {
+                  console.warn('[DocxDiffEditor] Failed to process track changes for bubbles:', err);
                 }
+              }, 50);
+            }
+          } catch (contentErr) {
+            // TIER 1 FAILED: Try fallback (clean content without track marks)
+            console.warn(
+              '[DocxDiffEditor] Failed to apply merged content with track changes. ' +
+              'Falling back to direct content update without track bubbles.',
+              contentErr
+            );
+            
+            usedFallback = true;
+            
+            try {
+              // Apply the clean new content (without track marks)
+              setEditorContent(superdocRef.current.activeEditor, normalizedNewJson);
+              setEditingMode(superdocRef.current);
+            } catch (fallbackErr) {
+              // TIER 2 FAILED: Try rollback to previous state
+              console.warn('[DocxDiffEditor] Fallback content update failed, attempting rollback:', fallbackErr);
+              
+              try {
+                setEditorContent(superdocRef.current.activeEditor, rollbackJson);
+                setEditingMode(superdocRef.current);
+                
+                // Rollback succeeded - return error but editor is preserved
+                const error = contentErr instanceof Error ? contentErr : new Error('Failed to apply comparison');
+                handleOperationError(error, 'compareWith', 'applying');
+                setIsLoading(false);
+                return { success: false, error, message: error.message, phase: 'applying' };
+              } catch (rollbackErr) {
+                // TIER 3 FAILED: All recovery attempts failed - this is fatal
+                console.error('[DocxDiffEditor] All recovery attempts failed:', rollbackErr);
+                const error = contentErr instanceof Error ? contentErr : new Error('Failed to apply comparison');
+                handleFatalError(error, 'compareWith');
+                setIsLoading(false);
+                return { success: false, error, message: error.message, phase: 'applying' };
               }
             }
-
-            // Store structural changes for the pane (only if not in fallback mode)
-            if (!usedFallback) {
-              setStructuralChanges(structInfos);
-              setIsPaneDismissed(false); // Reset dismissed state on new comparison
-            } else {
-              // Clear structural changes in fallback mode since we can't show track bubbles
-              setStructuralChanges([]);
-            }
-
-            // Build result
-            // Note: insertions/deletions from text diff for backward compat,
-            // but structuralChanges now contains the actual block changes
-            const insertions = diff.segments.filter((s) => s.type === 'insert').length;
-            const deletions = diff.segments.filter((s) => s.type === 'delete').length;
-            const formatChanges = diff.formatChanges?.length || 0;
-            const structuralChangeCount = usedFallback ? 0 : structInfos.length;
-
-            // Combine summaries
-            const combinedSummary = [...structuralResult.summary];
-            if (diff.summary.length > 0 && structuralResult.summary.length === 0) {
-              // Only add text-level summary if no structural changes
-              combinedSummary.push(...diff.summary);
-            }
-            
-            // Add fallback notice to summary if applicable
-            if (usedFallback) {
-              combinedSummary.push('Note: Track change visualization unavailable for this content');
-            }
-
-            const result: ComparisonResult = {
-              totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
-              insertions,
-              deletions,
-              formatChanges,
-              structuralChanges: structuralChangeCount,
-              summary: combinedSummary,
-              mergedJson: usedFallback ? normalizedNewJson : merged,
-              structuralChangeInfos: usedFallback ? [] : structInfos,
-              usedFallback,
-            };
-
-            onComparisonComplete?.(result);
-            return result;
-          } catch (err) {
-            handleError(err instanceof Error ? err : new Error('Comparison failed'));
-            throw err;
-          } finally {
-            setIsLoading(false);
           }
+
+          // ===============================================================
+          // PHASE 5: Success - update state
+          // ===============================================================
+          
+          // Update sourceJson to reflect the new baseline
+          setSourceJson(cleanBaseline);
+          setMergedJson(normalizedMerged);
+          setDiffResult(diff);
+          
+          // Update rollback state for future operations
+          rollbackJsonRef.current = usedFallback ? normalizedNewJson : normalizedMerged;
+
+          // Store structural changes for the pane (only if not in fallback mode)
+          if (!usedFallback) {
+            setStructuralChanges(structInfos);
+            setIsPaneDismissed(false);
+          } else {
+            setStructuralChanges([]);
+          }
+
+          // Build result
+          const insertions = diff.segments.filter((s) => s.type === 'insert').length;
+          const deletions = diff.segments.filter((s) => s.type === 'delete').length;
+          const formatChanges = diff.formatChanges?.length || 0;
+          const structuralChangeCount = usedFallback ? 0 : structInfos.length;
+
+          // Combine summaries
+          const combinedSummary = [...(diff.summary || [])];
+          if (structInfos.length > 0 && !usedFallback) {
+            // Add structural change summaries at the beginning
+            const structSummaries = generateStructuralChangeSummary(structInfos);
+            if (structSummaries.length > 0) {
+              combinedSummary.unshift(...structSummaries);
+            }
+          }
+          
+          if (usedFallback) {
+            combinedSummary.push('Note: Track change visualization unavailable for this content');
+          }
+
+          const result: ComparisonResult = {
+            success: true,
+            totalChanges: insertions + deletions + formatChanges + structuralChangeCount,
+            insertions,
+            deletions,
+            formatChanges,
+            structuralChanges: structuralChangeCount,
+            summary: combinedSummary,
+            mergedJson: usedFallback ? normalizedNewJson : normalizedMerged,
+            structuralChangeInfos: usedFallback ? [] : structInfos,
+            usedFallback,
+          };
+
+          onComparisonComplete?.(result);
+          setIsLoading(false);
+          return result;
         },
 
         /**
@@ -1309,7 +1462,8 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
         setEditingMode,
         onSourceLoaded,
         onComparisonComplete,
-        handleError,
+        handleFatalError,
+        handleOperationError,
       ]
     );
 
@@ -1327,8 +1481,8 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
           </div>
         )}
 
-        {/* Error overlay */}
-        {error && (
+        {/* Fatal error overlay - only shown when editor is unrecoverable */}
+        {fatalError && (
           <div className="dde-error">
             <div className="dde-error__icon">
               <svg
@@ -1346,7 +1500,7 @@ export const DocxDiffEditor = forwardRef<DocxDiffEditorRef, DocxDiffEditorProps>
               </svg>
             </div>
             <p className="dde-error__title">Failed to load document</p>
-            <p className="dde-error__message">{error}</p>
+            <p className="dde-error__message">{fatalError}</p>
           </div>
         )}
 

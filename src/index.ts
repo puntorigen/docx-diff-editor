@@ -19,6 +19,14 @@ export type {
   ComparisonResult,
   StructuralPanePosition,
 
+  // Error types
+  EditorError,
+  EditorOperation,
+  ComparisonPhase,
+  ComparisonError,
+  CompareWithResult,
+  SetSourceError,
+
   // ProseMirror types
   ProseMirrorJSON,
   ProseMirrorMark,

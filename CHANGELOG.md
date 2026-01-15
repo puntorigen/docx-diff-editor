@@ -5,6 +5,71 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.62] - 2026-01-14
+
+### Added
+
+- **Graceful error handling architecture**: Operations like `setSource()` and `compareWith()` now preserve the editor state on failure instead of showing a fatal error overlay. The editor remains visible and functional for recoverable errors.
+
+- **New `EditorError` type**: Enhanced error information passed to `onError` callback with:
+  - `type`: `'fatal'` (editor unusable) or `'operation'` (editor still works)
+  - `operation`: Which operation failed (`setSource`, `compareWith`, `parseHtml`, etc.)
+  - `recoverable`: Whether the editor is still functional
+  - `phase`: For `compareWith`, which phase failed (`parsing`, `diffing`, `merging`, `applying`)
+
+- **Result-based error handling**: Both `setSource()` and `compareWith()` now return result objects instead of throwing:
+  - `CompareWithResult`: Union type with `success: true` (result) or `success: false` (error)
+  - `SetSourceError`: Returned on recoverable failure with error details
+  - Check `result.success` to determine outcome
+
+- **Multi-tier recovery cascade**: When applying content fails, the component attempts:
+  1. Apply merged content with track changes
+  2. Fallback: Apply clean content without track marks
+  3. Rollback: Restore previous editor state
+  4. Fatal: Only if all recovery attempts fail, show error overlay
+
+- **Rollback state management**: The component now maintains a `rollbackJsonRef` with the last known good state, updated after successful operations.
+
+### Changed
+
+- **`onError` callback signature**: Now receives `EditorError` instead of plain `Error`, providing richer context about the failure type and recoverability.
+
+- **`ComparisonResult` now includes `success: true`**: For backward compatibility, successful comparison results now have a `success` field set to `true`.
+
+- **Error overlay only for fatal errors**: The `dde-error` overlay is now only shown when the editor is truly unrecoverable. Operation errors call the callback but don't hide the editor.
+
+### New Types Exported
+
+- `EditorError` - Enhanced error info with type, operation, recoverable, message, phase
+- `EditorOperation` - Union type for operation names
+- `ComparisonPhase` - Union type for comparison phases
+- `ComparisonError` - Failed comparison result with `success: false`
+- `CompareWithResult` - Union of `ComparisonResult | ComparisonError`
+- `SetSourceError` - Failed setSource result with `success: false`
+
+### Migration Guide
+
+**Before (catching errors with try/catch):**
+```typescript
+try {
+  const result = await editorRef.current.compareWith(content);
+  console.log(`Found ${result.totalChanges} changes`);
+} catch (e) {
+  showError(e.message);
+}
+```
+
+**After (using result-based handling):**
+```typescript
+const result = await editorRef.current.compareWith(content);
+if (!result.success) {
+  // Editor is still intact!
+  showModal(result.message);
+  return;
+}
+console.log(`Found ${result.totalChanges} changes`);
+```
+
 ## [1.0.61] - 2026-01-14
 
 ### Fixed
